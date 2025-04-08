@@ -9,6 +9,9 @@ import math
 CELL_CARRIER_FREQ_MHZ = "cell_carrier_freq_mhz"
 LATENT_BACKGROUND_NOISE_DB = -150
 
+# Assume a transmit power for all cells (e.g., 46 dBm)
+tx_power_dbm = 23
+
 # Digital Twin releated
 CELL_EL_DEG = "cell_el_deg"
 CELL_ID = "cell_id"
