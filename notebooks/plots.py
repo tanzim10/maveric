@@ -116,6 +116,7 @@ def individual_scatter_plot(df, topology, ue_id):
     # Create a figure and axis
     plt.figure(figsize=(10, 8))
 
+    # Plot an empty scatter plot for RLF in the legend
     plt.scatter([], [], color='grey', label='RLF')
 
     # Define color mapping based on cell_id for both cells and UEs
@@ -123,8 +124,8 @@ def individual_scatter_plot(df, topology, ue_id):
 
     # Plot cell towers from the topology dataframe with 'X' markers and corresponding colors
     for _, row in topology.iterrows():
-        color = color_map.get(row['cell_id'], 'black')  # Default to black if unknown cell_id
-        plt.scatter(row['cell_lon'], row['cell_lat'], marker='X', s=200, linewidths=2, c=[color], label=f"Cell {row['cell_id']}")
+        color = color_map.get(float(row['cell_id']), 'black')  # Ensure it's a float to match df cell_id format
+        plt.scatter(row['cell_lon'], row['cell_lat'], marker='X', s=200, linewidths=2, c=[color], label=f"Cell {int(row['cell_id'])}")
 
     # Filter df to only include the selected ue_id
     df_filtered = df[df['ue_id'] == ue_id]
@@ -132,22 +133,24 @@ def individual_scatter_plot(df, topology, ue_id):
     # Plot only the selected UE
     for _, row in df_filtered.iterrows():
         cell_id = row['cell_id']
+        
+        # Handle "RLF" cells
         if cell_id == "RLF":
             color = 'grey'  # If cell_id is "RLF", set color to grey
         else:
-            cell_id_str = f"cell_{int(cell_id)}"  # Convert float cell_id to corresponding string format
-            color = color_map.get(cell_id_str, 'black')  # Default to black if unknown cell_id
+            # Directly use cell_id (which may be float or int) for color_map lookup
+            color = color_map.get(float(cell_id), 'black')  # Default to black if unknown cell_id
 
-        plt.scatter(row['loc_x'], row['loc_y'], c=[color], label=f"UE {row['ue_id']}")
+        plt.scatter(row['loc_x'], row['loc_y'], c=[color])
 
     # Add labels and title
     plt.xlabel('Longitude (loc_x)')
     plt.ylabel('Latitude (loc_y)')
     plt.title(f'Cell Towers and UE {ue_id} Location')
 
-    # Create a legend for the cells only
+    # Create a legend for the cells only (ensure each label appears only once)
     handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
+    by_label = dict(zip(labels, handles))  # Remove duplicate labels
     plt.legend(by_label.values(), by_label.keys())
 
     # Show the plot
