@@ -4,6 +4,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import plotly.express as px
 import seaborn as sns
 
+
 def plot_3d_hyst_ttt_score(df):
     """
     Creates an interactive 3D scatter plot of hyst, ttt, and score.
@@ -11,9 +12,15 @@ def plot_3d_hyst_ttt_score(df):
     Parameters:
         df (pd.DataFrame): A DataFrame containing columns 'hyst', 'ttt', and 'score'.
     """
-    fig = px.scatter_3d(df, x='hyst', y='ttt', z='score',
-                        color='score', color_continuous_scale='viridis',
-                        title='3D Scatter Plot of Hyst, TTT, and Score')
+    fig = px.scatter_3d(
+        df,
+        x="hyst",
+        y="ttt",
+        z="score",
+        color="score",
+        color_continuous_scale="viridis",
+        title="3D Scatter Plot of Hyst, TTT, and Score",
+    )
     fig.update_traces(marker=dict(size=6))
     fig.show()
 
@@ -22,30 +29,40 @@ def plot_scatter2(df, topology):
     # Create a figure and axis
     plt.figure(figsize=(10, 8))
 
-    plt.scatter([], [], color='grey', label='RLF')
+    plt.scatter([], [], color="grey", label="RLF")
 
     # Define color mapping based on cell_id for both cells and UEs
-    color_map = {1.0: 'red', 2.0: 'green', 3.0: 'blue'}
+    color_map = {1.0: "red", 2.0: "green", 3.0: "blue"}
 
     # Plot cell towers from the topology dataframe with 'X' markers and corresponding colors
     for _, row in topology.iterrows():
-        color = color_map.get(float(row['cell_id']), 'black')  # Ensure it's a float to match df cell_id format
-        plt.scatter(row['cell_lon'], row['cell_lat'], marker='X', s=200, linewidths=2, c=[color], label=f"Cell {row['cell_id']}")
+        color = color_map.get(
+            float(row["cell_id"]), "black"
+        )  # Ensure it's a float to match df cell_id format
+        plt.scatter(
+            row["cell_lon"],
+            row["cell_lat"],
+            marker="X",
+            s=200,
+            linewidths=2,
+            c=[color],
+            label=f"Cell {row['cell_id']}",
+        )
 
     # Plot UEs from df without labels but with the same color coding
     for _, row in df.iterrows():
-        cell_id = row['cell_id']
+        cell_id = row["cell_id"]
         if cell_id == "RLF":
-            color = 'grey'  # If cell_id is "RLF", set color to grey
+            color = "grey"  # If cell_id is "RLF", set color to grey
         else:
-            color = color_map.get(cell_id, 'black')  # Get color from the color_map
+            color = color_map.get(cell_id, "black")  # Get color from the color_map
 
-        plt.scatter(row['loc_x'], row['loc_y'], c=[color])
+        plt.scatter(row["loc_x"], row["loc_y"], c=[color])
 
     # Add labels and title
-    plt.xlabel('Longitude (loc_x)')
-    plt.ylabel('Latitude (loc_y)')
-    plt.title('Cell Towers and UE Locations')
+    plt.xlabel("Longitude (loc_x)")
+    plt.ylabel("Latitude (loc_y)")
+    plt.title("Cell Towers and UE Locations")
 
     # Create a legend for the cells only
     handles, labels = plt.gca().get_legend_handles_labels()
@@ -60,27 +77,34 @@ def plot_ue_rxpower_over_time(df: pd.DataFrame, total_ue: pd.DataFrame, ue_id: i
     the dotted line is at the bottom of the graph.
     """
     # Filter DataFrames
-    df_filtered = df[df['ue_id'] == ue_id].sort_values(by='tick')
-    total_filtered = total_ue[total_ue['ue_id'] == ue_id].sort_values(by='tick')
+    df_filtered = df[df["ue_id"] == ue_id].sort_values(by="tick")
+    total_filtered = total_ue[total_ue["ue_id"] == ue_id].sort_values(by="tick")
 
     if df_filtered.empty or total_filtered.empty:
         print(f"No data found for ue_id {ue_id}.")
         return
 
     # Determine minimum power level for plotting RLF
-    min_power = total_filtered['cell_rxpower_dbm'].min()
+    min_power = total_filtered["cell_rxpower_dbm"].min()
 
     # Assign colors for total_ue dataset
-    unique_cells_total = total_filtered['cell_id'].unique()
+    unique_cells_total = total_filtered["cell_id"].unique()
     colors_total = sns.color_palette("husl", len(unique_cells_total))
-    cell_color_map_total = {cell: colors_total[i] for i, cell in enumerate(unique_cells_total)}
+    cell_color_map_total = {
+        cell: colors_total[i] for i, cell in enumerate(unique_cells_total)
+    }
 
     # Plot the total_ue dataset
     plt.figure(figsize=(12, 6))
     for cell in unique_cells_total:
-        cell_data = total_filtered[total_filtered['cell_id'] == cell]
-        plt.plot(cell_data['tick'], cell_data['cell_rxpower_dbm'], label=f"Cell {cell}",
-                 color=cell_color_map_total[cell], linewidth=2)
+        cell_data = total_filtered[total_filtered["cell_id"] == cell]
+        plt.plot(
+            cell_data["tick"],
+            cell_data["cell_rxpower_dbm"],
+            label=f"Cell {cell}",
+            color=cell_color_map_total[cell],
+            linewidth=2,
+        )
 
     # Overlay the selected df with a green dotted line
     rlf_ticks = []
@@ -89,17 +113,21 @@ def plot_ue_rxpower_over_time(df: pd.DataFrame, total_ue: pd.DataFrame, ue_id: i
     normal_values = []
 
     for _, row in df_filtered.iterrows():
-        if row['cell_id'] == "RLF":
-            rlf_ticks.append(row['tick'])
+        if row["cell_id"] == "RLF":
+            rlf_ticks.append(row["tick"])
             rlf_values.append(min_power)
         else:
-            normal_ticks.append(row['tick'])
-            normal_values.append(row['cell_rxpower_dbm'])
+            normal_ticks.append(row["tick"])
+            normal_values.append(row["cell_rxpower_dbm"])
 
     if rlf_ticks:
-        plt.plot(rlf_ticks, rlf_values, 'k--', linewidth=2, label="RLF")  # Dotted line at bottom
+        plt.plot(
+            rlf_ticks, rlf_values, "k--", linewidth=2, label="RLF"
+        )  # Dotted line at bottom
     if normal_ticks:
-        plt.plot(normal_ticks, normal_values, 'k--', linewidth=2, label="Connected To Cell")
+        plt.plot(
+            normal_ticks, normal_values, "k--", linewidth=2, label="Connected To Cell"
+        )
 
     # Labels and title
     plt.xlabel("Tick (Time)")
@@ -108,7 +136,7 @@ def plot_ue_rxpower_over_time(df: pd.DataFrame, total_ue: pd.DataFrame, ue_id: i
 
     # Legend
     plt.legend(title="Cell ID")
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.show()
 
 
@@ -117,36 +145,48 @@ def individual_scatter_plot(df, topology, ue_id):
     plt.figure(figsize=(10, 8))
 
     # Plot an empty scatter plot for RLF in the legend
-    plt.scatter([], [], color='grey', label='RLF')
+    plt.scatter([], [], color="grey", label="RLF")
 
     # Define color mapping based on cell_id for both cells and UEs
-    color_map = {1.0: 'red', 2.0: 'green', 3.0: 'blue'}
+    color_map = {1.0: "red", 2.0: "green", 3.0: "blue"}
 
     # Plot cell towers from the topology dataframe with 'X' markers and corresponding colors
     for _, row in topology.iterrows():
-        color = color_map.get(float(row['cell_id']), 'black')  # Ensure it's a float to match df cell_id format
-        plt.scatter(row['cell_lon'], row['cell_lat'], marker='X', s=200, linewidths=2, c=[color], label=f"Cell {int(row['cell_id'])}")
+        color = color_map.get(
+            float(row["cell_id"]), "black"
+        )  # Ensure it's a float to match df cell_id format
+        plt.scatter(
+            row["cell_lon"],
+            row["cell_lat"],
+            marker="X",
+            s=200,
+            linewidths=2,
+            c=[color],
+            label=f"Cell {int(row['cell_id'])}",
+        )
 
     # Filter df to only include the selected ue_id
-    df_filtered = df[df['ue_id'] == ue_id]
+    df_filtered = df[df["ue_id"] == ue_id]
 
     # Plot only the selected UE
     for _, row in df_filtered.iterrows():
-        cell_id = row['cell_id']
-        
+        cell_id = row["cell_id"]
+
         # Handle "RLF" cells
         if cell_id == "RLF":
-            color = 'grey'  # If cell_id is "RLF", set color to grey
+            color = "grey"  # If cell_id is "RLF", set color to grey
         else:
             # Directly use cell_id (which may be float or int) for color_map lookup
-            color = color_map.get(float(cell_id), 'black')  # Default to black if unknown cell_id
+            color = color_map.get(
+                float(cell_id), "black"
+            )  # Default to black if unknown cell_id
 
-        plt.scatter(row['loc_x'], row['loc_y'], c=[color])
+        plt.scatter(row["loc_x"], row["loc_y"], c=[color])
 
     # Add labels and title
-    plt.xlabel('Longitude (loc_x)')
-    plt.ylabel('Latitude (loc_y)')
-    plt.title(f'Cell Towers and UE {ue_id} Location')
+    plt.xlabel("Longitude (loc_x)")
+    plt.ylabel("Latitude (loc_y)")
+    plt.title(f"Cell Towers and UE {ue_id} Location")
 
     # Create a legend for the cells only (ensure each label appears only once)
     handles, labels = plt.gca().get_legend_handles_labels()
