@@ -9,39 +9,8 @@ from radp.digital_twin.utils.gis_tools import GISTools
 from radp.digital_twin.traffic_load_model.city_dt_gen import city_digitaltwin_generator
 
 
-def _radp_model_rftwin(
-    trafficload_ue_data: pd.DataFrame,
-    _site_config_data: pd.DataFrame,
-    path_loss_exponent: float = 3.5,
-    ref_rx_power: float = -50,
-) -> pd.DataFrame:
-    """Calculates received power for each UE from each cell."""
-    ue_rxpower_data = []
-    for _, ue_row in trafficload_ue_data.iterrows():
-        for _, cell_row in _site_config_data.iterrows():
-            distance = GISTools.dist(
-                (ue_row[c.LAT], ue_row[c.LON]),
-                (cell_row[c.CELL_LAT], cell_row[c.CELL_LON]),
-            )
-            rx_power = (
-                cell_row[c.CELL_TXPWR_DBM]
-                + ref_rx_power
-                - 10 * path_loss_exponent * np.log10(distance)
-                if distance > 0.001
-                else ref_rx_power
-            )
-            ue_rxpower_data.append(
-                {
-                    "tick": ue_row["tick"],
-                    "ue_id": ue_row["ue_id"],
-                    "cell_id": cell_row[c.CELL_ID],
-                    "rx_power": rx_power,  # Keep string for consistency
-                }
-            )
-    return pd.DataFrame(ue_rxpower_data)
-
 def _calculate_received_power(
-    self, distance_km: float, frequency_mhz: int
+     distance_km: float, frequency_mhz: int, tx_power_dbm: float = 23
 ) -> float:
     """
     Calculate received power using the Free-Space Path Loss (FSPL) model.
@@ -53,8 +22,42 @@ def _calculate_received_power(
     fspl_db = 20 * np.log10(distance_m) + 20 * np.log10(frequency_mhz) - 27.55
 
     # Calculate and return the received power in dBm
-    received_power_dbm = self.tx_power_dbm - fspl_db
+    received_power_dbm = tx_power_dbm - fspl_db
     return received_power_dbm
+
+def _radp_model_rftwin(
+    trafficload_ue_data: pd.DataFrame,
+    site_config_data: pd.DataFrame,
+    tx_power_dbm: float = 23
+) -> pd.DataFrame:
+    """
+    Calculates received power for each UE from each cell using FSPL model.
+    """
+    ue_rxpower_data = []
+
+    for _, ue_row in trafficload_ue_data.iterrows():
+        for _, cell_row in site_config_data.iterrows():
+            distance_km = GISTools.dist(
+                (ue_row[c.LAT], ue_row[c.LON]),
+                (cell_row[c.CELL_LAT], cell_row[c.CELL_LON]),
+            )
+
+            rx_power = (
+                _calculate_received_power(distance_km, cell_row[c.CELL_CARRIER_FREQ_MHZ]) 
+                if distance_km > 0.001 else tx_power_dbm
+            )
+
+            ue_rxpower_data.append(
+                {
+                    "tick": ue_row["tick"],
+                    "ue_id": ue_row["ue_id"],
+                    "cell_id": cell_row[c.CELL_ID],
+                    "rx_power": rx_power,
+                }
+            )
+
+    return pd.DataFrame(ue_rxpower_data)
+
 
 def _radp_metric_trafficload(
     trafficload_ue_data: pd.DataFrame,
