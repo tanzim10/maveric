@@ -180,7 +180,7 @@ def _check_hyst(
     ue_data_for_current_tick: pd.DataFrame, past_attachment: pd.DataFrame, hyst: float
 ) -> pd.DataFrame:
     """
-    Function to update UE data based on hysteresis condition and past attachment.
+    Function to help update the history of possible attachment list based on hysteresis condition and past attachment.
     It compares the current UE-cell power with the power of the cell-to-UE from the past attachment
     (using the current tick's data).
     """
@@ -274,23 +274,11 @@ def _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachme
                 )
 
     current_attachment = pd.DataFrame(current_attachment_list).reset_index(drop=True)
-    # current_attachment = _check_hyst_in_current_tick(ue_data_for_current_tick, current_attachment, past_attachment, hyst) # TODO: FUTURE FIX --> all 'attachment' typos
 
     return current_attachment
 
 
 def _check_rlf_threshold(df, current_tick_df, rlf_threshold):
-    """
-    Function to update SINR data based on the RLF threshold.
-
-    Parameters:
-    df (pd.DataFrame): The main DataFrame containing the SINR data (one entry per ue_id).
-    current_tick_df (pd.DataFrame): The DataFrame for the current tick that will be used to replace data if needed (one entry per ue_id).
-    rlf_threshold (float): The threshold for SINR in dB to determine if a cell is considered RLF (Radio Link Failure).
-
-    Returns:
-    pd.DataFrame: The updated DataFrame with the modifications applied.
-    """
     # Create a copy of the original df to avoid modifying it in place
     updated_df = df.copy()
 
@@ -362,7 +350,9 @@ def _check_hyst_in_current_tick(
             "current attachment and past attachment are not consistent. Check their shape, ue_id and cell_id columns."
         )
     elif set(current_attachment["ue_id"]) != set(past_attachment["ue_id"]):
-        raise AssertionError("Error 2")
+        raise AssertionError(
+            "current attachment and past attachment have different ue_ids."
+        )
     for i, curr in current_attachment.iterrows():
         prev = past_attachment[past_attachment["ue_id"] == curr["ue_id"]].iloc[0]
         # * ignoring if no cell switch for this UE
@@ -422,7 +412,8 @@ def _perform_attachment_hyst_ttt_per_tick(
                 )
             else:
                 raise AssertionError(
-                    "Length of Strongest Server History must be EQUALS to TTT - 1.\n Call Perform Attachment with use_strongest_server = True"
+                    "Length of Strongest Server History must be EQUALS to TTT - 1."
+                    "Call Perform Attachment with use_strongest_server = True"
                 )
 
     if len(strongest_server_history) == ttt:
