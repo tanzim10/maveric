@@ -4,6 +4,53 @@ import math
 import apps.coverage_capacity_optimization.constants as constants
 
 
+def count_switches(df):
+    """
+    Counts the number of times a mock_ue_id switches cell_id to a different one (excluding 'RLF').
+    """
+    count = 0
+    df = df.sort_values(by=['ue_id', 'tick'])  # Ensure correct order
+    prev_cells = {}
+    prev_ticks = {}
+
+    for _, row in df.iterrows():
+        ue_id, cell_id, tick = row['ue_id'], row['cell_id'], row['tick']
+
+        if ue_id in prev_cells and prev_cells[ue_id] != cell_id and prev_cells[ue_id] is not None:
+            if tick == prev_ticks[ue_id] + 1 and cell_id != "RLF":
+                count += 1
+
+        prev_cells[ue_id] = cell_id
+        prev_ticks[ue_id] = tick
+    return count
+
+def count_rlf(df):
+    """
+    Counts the number of times a mock_ue_id switches from any cell_id to 'RLF'.
+    """
+    return (df['cell_id'] == "RLF").sum()
+
+def calculate_mro_metric(data):
+    # Constants for interruption times
+    ts = 50 / 1000  # Convert ms to seconds
+    t_nas = 1000 / 1000  # Convert ms to seconds
+
+    # Calculate total time (T) based on ticks; assuming each tick represents a uniform time slice
+    # This could be adjusted if ticks represent variable time slices
+    # Rather than passing the UE Data as whole we can send just an integar for tick
+    ticks = len(data['tick'].unique())
+    # Assuming each tick represents 50ms (this value may need to be adjusted based on actual data characteristics)
+    tick_duration_seconds = 1  # 1 second per tick
+    T = ticks * tick_duration_seconds
+
+    ns_handover_count = count_switches(data)  # Count of handovers to different cells (excluding RLF)
+    nf_handover_count = count_rlf(data)  # Count of handovers to RLF
+
+    # Calculate D
+    D = T - (ns_handover_count * ts + nf_handover_count * t_nas)
+
+    return D
+
 def haversine(lat1, lon1, lat2, lon2):
     # Convert latitude and longitude from degrees to radians
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
