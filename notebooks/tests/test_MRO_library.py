@@ -4,7 +4,7 @@ import pandas as pd
 
 class TestMROLibrary(unittest.TestCase):
     data = {
-    'mock_ue_id': [1,   1,    1,    1,    2,  2,    3,   3,   3],
+    'ue_id': [1,   1,    1,    1,    2,  2,    3,   3,   3],
     'cell_id':    ['A', 'RLF', 'RLF', 'B', 'A', 'A',  'X', 'Y', 'Z'],
     'tick':       [1,   2,    3,    4,    1,  2,    1,   2,   3]
     }
