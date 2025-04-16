@@ -223,58 +223,60 @@ def add_sinr_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _check_hyst(
-    ue_data_for_current_tick: pd.DataFrame, past_attachment: pd.DataFrame, hyst: float
-) -> pd.DataFrame:
+def _check_hyst(ue_data_for_current_tick, past_attachment, hyst):
     """
-    Function to help update the history of possible attachment list based on hysteresis condition and past attachment.
-    It compares the current UE-cell power with the power of the cell-to-UE from the past attachment
-    (using the current tick's data).
+    Function to update UE data based on hysteresis condition and past attachment.
+    It selects the best data between current tick and past attachment for each ue_id.
     """
-    # Merge the current tick data with past attachment data
-    merged_df = pd.merge(
-        ue_data_for_current_tick,
-        past_attachment,
-        on="ue_id",
-        how="left",
-        suffixes=("", "_past"),
-    )
+    # Merge the current tick data with past attachment data (to compare past power)
+    merged_df = pd.merge(ue_data_for_current_tick, past_attachment,
+                         on='ue_id', how='left', suffixes=('', '_past'))
 
-    # Retrieve the power of the past cell-to-UE from the current tick's data
-    past_powers = ue_data_for_current_tick.set_index(["ue_id", "cell_id"])[
-        "cell_rxpower_dbm"
-    ]
-    merged_df["past_power_current_tick"] = (
-        merged_df.set_index(["ue_id", "cell_id_past"])
-        .index.map(past_powers)
-        .fillna(-np.inf)
-    )
+    # Initialize an empty list to store the final rows
+    final_data = []
 
-    # Calculate the hysteresis condition
-    merged_df["use_current"] = (
-        merged_df["cell_rxpower_dbm"] - merged_df["past_power_current_tick"]
-    ) >= hyst
+    # Group by 'ue_id' to process each UE individually
+    for ue_id, group in merged_df.groupby('ue_id'):
+        # Initialize variables to track the best row for the ue_id
+        best_row = None
+        best_power = -999  # Start with an arbitrarily low value for comparison (can also use NaN)
 
-    # Select the appropriate rows based on the hysteresis condition
-    merged_df["final_cell_id"] = np.where(
-        merged_df["use_current"], merged_df["cell_id"], merged_df["cell_id_past"]
-    )
-    merged_df["final_rxpower"] = np.where(
-        merged_df["use_current"],
-        merged_df["cell_rxpower_dbm"],
-        merged_df["past_power_current_tick"],
-    )
+        # Iterate through each row (cell_id) for the current ue_id
+        for _, row in group.iterrows():
+            current_power = row['cell_rxpower_dbm']
+            past_cell_id = row['cell_id_past']  # Cell ID from past attachment
 
-    # Drop unnecessary columns and return the updated DataFrame
-    final_df = merged_df.drop(
-        columns=[
-            "cell_id",
-            "cell_rxpower_dbm",
-            "cell_id_past",
-            "past_power_current_tick",
-            "use_current",
-        ]
-    ).rename(columns={"final_cell_id": "cell_id", "final_rxpower": "cell_rxpower_dbm"})
+            # Retrieve the past data for the previous cell_id of this ue_id
+            past_data = ue_data_for_current_tick[(ue_data_for_current_tick['ue_id'] == ue_id) &
+                                                 (ue_data_for_current_tick['cell_id'] == past_cell_id)]
+
+            # If past data exists, get the past power
+            if not past_data.empty:
+                past_power = past_data.iloc[0]['cell_rxpower_dbm']
+            else:
+                past_power = -999  # Default value if no past data found
+
+            # Check if the current power exceeds the past power by at least 'hyst'
+            if current_power - past_power >= hyst:
+                # If the condition is met, consider the current row (i.e., current power is better)
+                if current_power > best_power:  # Keep the row with the highest power
+                    best_row = row
+                    best_power = current_power
+            else:
+                # Otherwise, consider the past data (if it has higher power)
+                if past_power > best_power:
+                    best_row = past_data.iloc[0]  # Select the past data row
+                    best_power = past_power
+
+        # After processing all cell_ids for this ue_id, add the best row to the final list
+        if best_row is not None:
+            final_data.append(best_row)
+
+    # Convert the final list of rows into a DataFrame
+    final_df = pd.DataFrame(final_data)
+
+    # Remove columns that have the '_past' suffix (since we only need current data)
+    final_df = final_df.loc[:, ~final_df.columns.str.endswith('_past')]
 
     return final_df
 
