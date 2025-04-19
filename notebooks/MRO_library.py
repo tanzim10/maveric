@@ -186,49 +186,31 @@ def connect_ue_to_all_cells(ue_data, topology):
 
 
 def add_sinr_column(df: pd.DataFrame) -> pd.DataFrame:
-    # Function to compute SINR for a group of rows corresponding to one frequency layer.
-    def compute_layer_sinr(group: pd.DataFrame) -> float:
-        # Get the RSRP: the highest received power in this frequency group.
-        # Using idxmax ensures we pick the row with max cell_rxpower_dbm.
-        serving_row = group.loc[group["cell_rxpower_dbm"].idxmax()]
-        serving_rsrp_dbm = serving_row["cell_rxpower_dbm"]
+    """
+    Adds a 'sinr_db' column that calculates SINR per UE–cell pair
+    based on received power and interference from other cells on the same frequency.
+    """
+    # Convert background noise from dB to linear scale
+    noise_linear = 10 ** (constants.LATENT_BACKGROUND_NOISE_DB / 10)
 
-        # Convert background noise from dB to linear scale.
-        noise_linear = 10 ** (constants.LATENT_BACKGROUND_NOISE_DB / 10)
+    # Compute SINR for each row (UE–cell pair), given its group
+    def compute_row_level_sinr(row, group):
+        signal_dbm = row["cell_rxpower_dbm"]
 
-        # Convert all received powers from dBm to linear scale and sum them.
-        total_power_linear = np.sum(10 ** (group["cell_rxpower_dbm"] / 10))
+        # Exclude the current row (serving cell) to compute interference
+        interference_linear = np.sum(10 ** (group.loc[group.index != row.name, "cell_rxpower_dbm"] / 10))
+        total_interference_plus_noise_linear = interference_linear + noise_linear
 
-        # Interference is total power minus the serving cell power (in linear scale)
-        serving_power_linear = 10 ** (serving_rsrp_dbm / 10)
-        interference_linear = total_power_linear - serving_power_linear
-
-        # Total interference plus noise in dBm
-        total_interference_noise_dbm = 10 * np.log10(interference_linear + noise_linear)
-
-        # SINR is the difference between serving RSRP and the total interference-plus-noise (both in dBm)
-        sinr_db = serving_rsrp_dbm - total_interference_noise_dbm
-
+        total_interference_plus_noise_dbm = 10 * np.log10(total_interference_plus_noise_linear)
+        sinr_db = signal_dbm - total_interference_plus_noise_dbm
         return sinr_db
 
-    # This dictionary will store the computed SINR per UE id.
-    ue_sinr = {}
-
-    # Group by ue_id. Assume each UE might have multiple measurements (e.g., different cells).
-    for ue_id, ue_group in df.groupby("ue_id"):
-        # Group by frequency as interference is only calculated among cells on the same frequency.
-        sinr_by_freq = {}
-        for freq, freq_group in ue_group.groupby("cell_carrier_freq_mhz"):
-            sinr_by_freq[freq] = compute_layer_sinr(freq_group)
-
-        # Select the frequency layer with the highest SINR as the final value for the UE.
-        # If there is only one frequency group, this simply takes that value.
-        max_sinr = max(sinr_by_freq.values())
-        ue_sinr[ue_id] = max_sinr
-
-    # Map the computed SINR back to the original dataframe rows.
+    # Apply per UE and frequency
     df = df.copy()
-    df["sinr_db"] = df["ue_id"].map(ue_sinr)
+    df["sinr_db"] = df.groupby(["ue_id", "cell_carrier_freq_mhz"]).apply(
+        lambda group: group.apply(lambda row: compute_row_level_sinr(row, group), axis=1)
+    ).reset_index(level=[0, 1], drop=True)
+
     return df
 
 
