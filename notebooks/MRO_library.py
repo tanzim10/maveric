@@ -9,14 +9,18 @@ def count_switches(df):
     Counts the number of times a mock_ue_id switches cell_id to a different one (excluding 'RLF').
     """
     count = 0
-    df = df.sort_values(by=['ue_id', 'tick'])  # Ensure correct order
+    df = df.sort_values(by=["ue_id", "tick"])  # Ensure correct order
     prev_cells = {}
     prev_ticks = {}
 
     for _, row in df.iterrows():
-        ue_id, cell_id, tick = row['ue_id'], row['cell_id'], row['tick']
+        ue_id, cell_id, tick = row["ue_id"], row["cell_id"], row["tick"]
 
-        if ue_id in prev_cells and prev_cells[ue_id] != cell_id and prev_cells[ue_id] is not None:
+        if (
+            ue_id in prev_cells
+            and prev_cells[ue_id] != cell_id
+            and prev_cells[ue_id] is not None
+        ):
             if tick == prev_ticks[ue_id] + 1 and cell_id != "RLF":
                 count += 1
 
@@ -24,11 +28,13 @@ def count_switches(df):
         prev_ticks[ue_id] = tick
     return count
 
+
 def count_rlf(df):
     """
     Counts the number of times a mock_ue_id switches from any cell_id to 'RLF'.
     """
-    return (df['cell_id'] == "RLF").sum()
+    return (df["cell_id"] == "RLF").sum()
+
 
 def calculate_mro_metric(data):
     # Constants for interruption times
@@ -38,18 +44,21 @@ def calculate_mro_metric(data):
     # Calculate total time (T) based on ticks; assuming each tick represents a uniform time slice
     # This could be adjusted if ticks represent variable time slices
     # Rather than passing the UE Data as whole we can send just an integar for tick
-    ticks = len(data['tick'].unique())
+    ticks = len(data["tick"].unique())
     # Assuming each tick represents 50ms (this value may need to be adjusted based on actual data characteristics)
     tick_duration_seconds = 1  # 1 second per tick
     T = ticks * tick_duration_seconds
 
-    ns_handover_count = count_switches(data)  # Count of handovers to different cells (excluding RLF)
+    ns_handover_count = count_switches(
+        data
+    )  # Count of handovers to different cells (excluding RLF)
     nf_handover_count = count_rlf(data)  # Count of handovers to RLF
 
     # Calculate D
     D = T - (ns_handover_count * ts + nf_handover_count * t_nas)
 
     return D
+
 
 def haversine(lat1, lon1, lat2, lon2):
     # Convert latitude and longitude from degrees to radians
@@ -229,30 +238,39 @@ def _check_hyst(ue_data_for_current_tick, past_attachment, hyst):
     It selects the best data between current tick and past attachment for each ue_id.
     """
     # Merge the current tick data with past attachment data (to compare past power)
-    merged_df = pd.merge(ue_data_for_current_tick, past_attachment,
-                         on='ue_id', how='left', suffixes=('', '_past'))
+    merged_df = pd.merge(
+        ue_data_for_current_tick,
+        past_attachment,
+        on="ue_id",
+        how="left",
+        suffixes=("", "_past"),
+    )
 
     # Initialize an empty list to store the final rows
     final_data = []
 
     # Group by 'ue_id' to process each UE individually
-    for ue_id, group in merged_df.groupby('ue_id'):
+    for ue_id, group in merged_df.groupby("ue_id"):
         # Initialize variables to track the best row for the ue_id
         best_row = None
-        best_power = -999  # Start with an arbitrarily low value for comparison (can also use NaN)
+        best_power = (
+            -999
+        )  # Start with an arbitrarily low value for comparison (can also use NaN)
 
         # Iterate through each row (cell_id) for the current ue_id
         for _, row in group.iterrows():
-            current_power = row['cell_rxpower_dbm']
-            past_cell_id = row['cell_id_past']  # Cell ID from past attachment
+            current_power = row["cell_rxpower_dbm"]
+            past_cell_id = row["cell_id_past"]  # Cell ID from past attachment
 
             # Retrieve the past data for the previous cell_id of this ue_id
-            past_data = ue_data_for_current_tick[(ue_data_for_current_tick['ue_id'] == ue_id) &
-                                                 (ue_data_for_current_tick['cell_id'] == past_cell_id)]
+            past_data = ue_data_for_current_tick[
+                (ue_data_for_current_tick["ue_id"] == ue_id)
+                & (ue_data_for_current_tick["cell_id"] == past_cell_id)
+            ]
 
             # If past data exists, get the past power
             if not past_data.empty:
-                past_power = past_data.iloc[0]['cell_rxpower_dbm']
+                past_power = past_data.iloc[0]["cell_rxpower_dbm"]
             else:
                 past_power = -999  # Default value if no past data found
 
@@ -276,7 +294,7 @@ def _check_hyst(ue_data_for_current_tick, past_attachment, hyst):
     final_df = pd.DataFrame(final_data)
 
     # Remove columns that have the '_past' suffix (since we only need current data)
-    final_df = final_df.loc[:, ~final_df.columns.str.endswith('_past')]
+    final_df = final_df.loc[:, ~final_df.columns.str.endswith("_past")]
 
     return final_df
 
@@ -349,41 +367,41 @@ def _check_rlf_threshold(df, current_tick_df, rlf_threshold):
 
             if max_sinr_current_tick >= rlf_threshold:
                 # If the best SINR in current_tick_df is above the threshold, update the data
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "sinr_db"
-                ] = max_sinr_current_tick
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "cell_id"
-                ] = current_tick_ue["cell_id"].values[0]
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "cell_rxpower_dbm"
-                ] = current_tick_ue["cell_rxpower_dbm"].values[0]
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "cell_lat"
-                ] = current_tick_ue["cell_lat"].values[0]
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "cell_lon"
-                ] = current_tick_ue["cell_lon"].values[0]
+                updated_df.loc[updated_df["ue_id"] == ue_id, "sinr_db"] = (
+                    max_sinr_current_tick
+                )
+                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_id"] = (
+                    current_tick_ue["cell_id"].values[0]
+                )
+                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_rxpower_dbm"] = (
+                    current_tick_ue["cell_rxpower_dbm"].values[0]
+                )
+                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_lat"] = (
+                    current_tick_ue["cell_lat"].values[0]
+                )
+                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_lon"] = (
+                    current_tick_ue["cell_lon"].values[0]
+                )
                 updated_df.loc[
                     updated_df["ue_id"] == ue_id, "cell_carrier_freq_mhz"
                 ] = current_tick_ue["cell_carrier_freq_mhz"].values[0]
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "cell_az_deg"
-                ] = current_tick_ue["cell_az_deg"].values[0]
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "distance_km"
-                ] = current_tick_ue["distance_km"].values[0]
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "relative_bearing"
-                ] = current_tick_ue["relative_bearing"].values[0]
+                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_az_deg"] = (
+                    current_tick_ue["cell_az_deg"].values[0]
+                )
+                updated_df.loc[updated_df["ue_id"] == ue_id, "distance_km"] = (
+                    current_tick_ue["distance_km"].values[0]
+                )
+                updated_df.loc[updated_df["ue_id"] == ue_id, "relative_bearing"] = (
+                    current_tick_ue["relative_bearing"].values[0]
+                )
 
             else:
                 # If both are below the threshold, set RLF values
                 updated_df.loc[updated_df["ue_id"] == ue_id, "sinr_db"] = -np.inf
                 updated_df.loc[updated_df["ue_id"] == ue_id, "cell_id"] = "RLF"
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "cell_rxpower_dbm"
-                ] = -np.inf
+                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_rxpower_dbm"] = (
+                    -np.inf
+                )
 
     return updated_df
 
@@ -512,3 +530,20 @@ def perform_attachment_hyst_ttt(ue_data, hyst, ttt, rlf_threshold):
         cell_attached_df = pd.concat([cell_attached_df, current_attachment])
 
     return cell_attached_df
+
+
+def find_hyst_diff(df2):
+    df = df2.copy()
+    # Replace infinite values with NaN
+    df["cell_rxpower_dbm"] = df["cell_rxpower_dbm"].replace([np.inf, -np.inf], np.nan)
+
+    # Drop rows where the 'cell_rxpower_dbm' is NaN and create a copy
+    df_clean = df.dropna(subset=["cell_rxpower_dbm"]).copy()
+
+    # Calculate the difference between consecutive rows in the 'cell_rxpower_dbm' column
+    df_clean["rxpower_diff"] = df_clean["cell_rxpower_dbm"].diff().abs()
+
+    # Find the highest difference
+    max_diff = df_clean["rxpower_diff"].max()
+
+    return max_diff
