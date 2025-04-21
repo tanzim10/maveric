@@ -328,62 +328,55 @@ def _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachme
 
 
 def _check_rlf_threshold(df, current_tick_df, rlf_threshold):
-    # Create a copy of the original df to avoid modifying it in place
+    # Create a copy to avoid modifying the original
     updated_df = df.copy()
 
-    # Iterate over the unique ue_ids in the original df
     for ue_id in df["ue_id"]:
-        # Get the row for the current ue_id in both dataframes
+        # Get relevant rows for the current UE
         df_ue = df[df["ue_id"] == ue_id]
         current_tick_ue = current_tick_df[current_tick_df["ue_id"] == ue_id]
 
-        # Extract the SINR value from the current row in df
+        if df_ue.empty:
+            continue
+
         max_sinr = df_ue["sinr_db"].values[0]
 
         if max_sinr >= rlf_threshold:
-            # If the max SINR is greater than or equal to the threshold, no change is needed
-            continue
-        else:
-            # If the SINR in df is below the threshold, check current_tick_df for the best SINR
+            continue  # No update needed
+
+        if not current_tick_ue.empty:
             max_sinr_current_tick = current_tick_ue["sinr_db"].max()
 
             if max_sinr_current_tick >= rlf_threshold:
-                # If the best SINR in current_tick_df is above the threshold, update the data
-                updated_df.loc[updated_df["ue_id"] == ue_id, "sinr_db"] = (
-                    max_sinr_current_tick
-                )
-                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_id"] = (
-                    current_tick_ue["cell_id"].values[0]
-                )
-                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_rxpower_dbm"] = (
-                    current_tick_ue["cell_rxpower_dbm"].values[0]
-                )
-                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_lat"] = (
-                    current_tick_ue["cell_lat"].values[0]
-                )
-                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_lon"] = (
-                    current_tick_ue["cell_lon"].values[0]
-                )
-                updated_df.loc[
-                    updated_df["ue_id"] == ue_id, "cell_carrier_freq_mhz"
-                ] = current_tick_ue["cell_carrier_freq_mhz"].values[0]
-                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_az_deg"] = (
-                    current_tick_ue["cell_az_deg"].values[0]
-                )
-                updated_df.loc[updated_df["ue_id"] == ue_id, "distance_km"] = (
-                    current_tick_ue["distance_km"].values[0]
-                )
-                updated_df.loc[updated_df["ue_id"] == ue_id, "relative_bearing"] = (
-                    current_tick_ue["relative_bearing"].values[0]
-                )
+                # Use the row with best SINR in current_tick_ue
+                best_row = current_tick_ue.loc[current_tick_ue["sinr_db"].idxmax()]
 
-            else:
-                # If both are below the threshold, set RLF values
-                updated_df.loc[updated_df["ue_id"] == ue_id, "sinr_db"] = -np.inf
-                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_id"] = "RLF"
-                updated_df.loc[updated_df["ue_id"] == ue_id, "cell_rxpower_dbm"] = (
-                    -np.inf
-                )
+                # Get the index in updated_df where ue_id matches
+                target_indices = updated_df.index[updated_df["ue_id"] == ue_id]
+
+                if not target_indices.empty:
+                    target_idx = target_indices[0]
+
+                    # Find all common columns
+                    common_cols = updated_df.columns.intersection(current_tick_df.columns)
+
+                    for col in common_cols:
+                        try:
+                            updated_df.at[target_idx, col] = best_row[col]
+                        except Exception:
+                            pass  # Silently skip invalid updates
+                continue  # Skip the RLF fallback if updated
+
+        # If threshold condition failed in both df and current_tick_df, set RLF values
+        target_indices = updated_df.index[updated_df["ue_id"] == ue_id]
+        if not target_indices.empty:
+            target_idx = target_indices[0]
+            if "sinr_db" in updated_df.columns:
+                updated_df.at[target_idx, "sinr_db"] = -np.inf
+            if "cell_id" in updated_df.columns:
+                updated_df.at[target_idx, "cell_id"] = "RLF"
+            if "cell_rxpower_dbm" in updated_df.columns:
+                updated_df.at[target_idx, "cell_rxpower_dbm"] = -np.inf
 
     return updated_df
 

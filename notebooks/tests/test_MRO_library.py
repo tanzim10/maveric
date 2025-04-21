@@ -39,7 +39,6 @@ class TestMROLibrary(unittest.TestCase):
             'cell_id':          [1, 2, 1, 2, 1, 2],
             'cell_rxpower_dbm': [68, 76, 40, 74, 91, 102],
             'sinr_db':          [30, 32, 20, 23, 26, 23],
-            # Rest is Dummy Data
             'cell_lat':         [10, 20, 30, 40, 50, 60],
             'cell_lon':         [10, 20, 30, 40, 50, 60],
             'cell_carrier_freq_mhz': [20, 20, 20, 20, 20, 20],
@@ -53,7 +52,6 @@ class TestMROLibrary(unittest.TestCase):
             'cell_id':          [2, 1, 2],
             'cell_rxpower_dbm': [76, 40, 102],
             'sinr_db':          [32, 20, 23],
-            # Rest is Dummy Data
             'cell_lat':         [10, 20, 30],
             'cell_lon':         [10, 20, 30],
             'cell_carrier_freq_mhz': [20, 20, 20],
@@ -62,32 +60,21 @@ class TestMROLibrary(unittest.TestCase):
             'relative_bearing': [10, 20, 30]
         })
 
-        answer = _check_rlf_threshold(df, data_current_tick, 25)
+        result = _check_rlf_threshold(df, data_current_tick, 25)
 
-        result = {
-        'ue_id': [1, 2, 3],
-        'cell_id': [2, 'RLF', 1],
-        'cell_rxpower_dbm': [76.0, '-inf', 91.0],
-        'sinr_db': [32.0, '-inf', 26.0],
-        'cell_lat': [10, 20, 50],
-        'cell_lon': [10, 20, 50],
-        'cell_carrier_freq_mhz': [20, 20, 20],
-        'cell_az_deg': [10, 20, 50],
-        'distance_km': [10, 20, 50],
-        'relative_bearing': [10, 20, 50]
-        }
-        result = pd.DataFrame(result)
-
-        pd.set_option('display.max_rows', None)  # Display all rows
-        pd.set_option('display.max_columns', None)  # Display all columns
-        pd.set_option('display.width', None)  # No line width limit
-        pd.set_option('display.max_colwidth', None)  # No limit on column width
-        
-        # Convert the columns to float64 in the result DataFrame
-        result['cell_rxpower_dbm'] = pd.to_numeric(result['cell_rxpower_dbm'], errors='coerce')
-        result['sinr_db'] = pd.to_numeric(result['sinr_db'], errors='coerce')
-        
-        self.assertTrue(answer.equals(result))
+        expected = pd.DataFrame({
+            'ue_id': [1, 2, 3],
+            'cell_id': [2, 'RLF', 1],
+            'cell_rxpower_dbm': [76.0, -np.inf, 91.0],
+            'sinr_db': [32.0, -np.inf, 26.0],
+            'cell_lat': [10, 20, 50],
+            'cell_lon': [10, 20, 50],
+            'cell_carrier_freq_mhz': [20, 20, 20],
+            'cell_az_deg': [10, 20, 50],
+            'distance_km': [10, 20, 50],
+            'relative_bearing': [10, 20, 50]
+        })
+        pd.testing.assert_frame_equal(result.reset_index(drop=True), expected.reset_index(drop=True))
 
 if __name__ == '__main__':
     unittest.main()
