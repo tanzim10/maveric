@@ -138,6 +138,75 @@ def plot_ue_rxpower_over_time(df: pd.DataFrame, total_ue: pd.DataFrame, ue_id: i
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.show()
 
+def plot_sinr_over_time(df: pd.DataFrame, total_ue: pd.DataFrame, ue_id: int, rlf_threshold: float):
+    """
+    Plots cell_rxpower_dbm over tick for a specific mock_ue_id with line color changing based on cell_id.
+    Also overlays the data for the given ue_id using a green dotted line, ensuring that when cell_id is "RLF",
+    the dotted line is at the bottom of the graph. Additionally, adds a grey dotted horizontal line for the rlf_threshold value.
+    """
+    # Filter DataFrames
+    df_filtered = df[df["ue_id"] == ue_id].sort_values(by="tick")
+    total_filtered = total_ue[total_ue["ue_id"] == ue_id].sort_values(by="tick")
+
+    if df_filtered.empty or total_filtered.empty:
+        print(f"No data found for ue_id {ue_id}.")
+        return
+
+    # Assign colors for total_ue dataset
+    unique_cells_total = total_filtered["cell_id"].unique()
+    colors_total = sns.color_palette("husl", len(unique_cells_total))
+    cell_color_map_total = {
+        cell: colors_total[i] for i, cell in enumerate(unique_cells_total)
+    }
+
+    # Plot the total_ue dataset
+    plt.figure(figsize=(12, 6))
+    for cell in unique_cells_total:
+        cell_data = total_filtered[total_filtered["cell_id"] == cell]
+        plt.plot(
+            cell_data["tick"],
+            cell_data["sinr_db"],
+            label=f"Cell {cell}",
+            color=cell_color_map_total[cell],
+            linewidth=2,
+        )
+
+    # Overlay the selected df with a green dotted line
+    rlf_ticks = []
+    rlf_values = []
+    normal_ticks = []
+    normal_values = []
+
+    for _, row in df_filtered.iterrows():
+        if row["cell_id"] == "RLF":
+            rlf_ticks.append(row["tick"])
+            rlf_values.append(row["sinr_db"])  # Keep RLF value as per actual data
+        else:
+            normal_ticks.append(row["tick"])
+            normal_values.append(row["sinr_db"])
+
+    if rlf_ticks:
+        plt.plot(
+            rlf_ticks, rlf_values, "k--", linewidth=2, label="RLF"
+        )  # Dotted line at RLF value
+    if normal_ticks:
+        plt.plot(
+            normal_ticks, normal_values, "k--", linewidth=2, label="Connected To Cell"
+        )
+
+    # Add the grey dotted horizontal line at rlf_threshold
+    plt.axhline(y=rlf_threshold, color='grey', linestyle='--', linewidth=2, label=f"RLF Threshold ({rlf_threshold})")
+
+    # Labels and title
+    plt.xlabel("Tick (Time)")
+    plt.ylabel("SINR_DB")
+    plt.title(f"SINR_DB over Time for UE: {ue_id}")
+
+    # Legend
+    plt.legend(title="Cell ID")
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.show()
+
 
 def individual_scatter_plot(df, topology, ue_id):
     # Create a figure and axis

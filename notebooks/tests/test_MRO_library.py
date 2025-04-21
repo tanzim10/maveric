@@ -32,6 +32,16 @@ class TestMROLibrary(unittest.TestCase):
         result = haversine(lat1, lon1, lat2, lon2)
         self.assertAlmostEqual(result, expected_distance, places=2)
 
+    def test_calculate_received_power(self):
+        distance_km = 10
+        frequency_mhz = 1800
+        expected_power = -94.55545010206613  # Example expected value
+        result = calculate_received_power(distance_km, frequency_mhz)
+        self.assertAlmostEqual(result, expected_power, places=2)
+
+    def test_concatenate_ue_to_topology(self):
+        raise NotImplementedError
+
     def test_rlf_threshold(self):
         # Dummy Data
         data_current_tick = pd.DataFrame({
