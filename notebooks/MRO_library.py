@@ -2,11 +2,28 @@ import pandas as pd
 import numpy as np
 import math
 import apps.coverage_capacity_optimization.constants as constants
+from typing import List
 
 
-def count_switches(df):
+def count_switches(df: pd.DataFrame) -> int:
     """
-    Counts the number of times a mock_ue_id switches cell_id to a different one (excluding 'RLF').
+    Count the number of seemless cell handovers (cell to cell switches) for user equipment (UE) based
+    on cell_id changes between consecutive ticks, excluding switches to 'RLF'.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing 'ue_id', 'cell_id', and 'tick' columns.
+
+    +--------+---------+------+
+    | ue_id  | cell_id | tick |
+    +========+=========+======+
+    |   0    |    4    |  1   |
+    |   1    |    2    |  2   |
+    |   2    |    5    |  3   |
+    |   3    |    3    |  4   |
+    +--------+---------+------+
+
+    Returns:
+        int: Total number of valid cell switches across all UEs.
     """
     count = 0
     df = df.sort_values(by=["ue_id", "tick"])  # Ensure correct order
@@ -29,14 +46,48 @@ def count_switches(df):
     return count
 
 
-def count_rlf(df):
+def count_rlf(df: pd.DataFrame) -> int:
     """
-    Counts the number of times a mock_ue_id switches from any cell_id to 'RLF'.
+    Counts the number of Radio Link Failures (RLF) by analyzing cell handovers onto RLF for UE
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing 'ue_id', 'cell_id', and 'tick' columns.
+
+    +--------+---------+------+
+    | ue_id  | cell_id | tick |
+    +========+=========+======+
+    |   0    |    4    |  1   |
+    |   1    |    2    |  2   |
+    |   2    |    5    |  3   |
+    |   3    |    3    |  4   |
+    +--------+---------+------+
+
+    Returns:
+        int: Total number of UE transitions to RLF cells.
     """
     return (df["cell_id"] == "RLF").sum()
 
 
-def calculate_mro_metric(data):
+def calculate_mro_metric(data: pd.DataFrame) -> float:
+
+    """
+    Calculated total operational cellular time remaining after loss due to cell handovers (including RLF)
+
+    Parameters:
+        data (pd.DataFrame): DataFrame containing UE data with a 'tick' column.
+
+    +--------+---------+------+
+    | ue_id  | cell_id | tick |
+    +========+=========+======+
+    |   0    |    4    |  1   |
+    |   1    |    2    |  2   |
+    |   2    |    5    |  3   |
+    |   3    |    3    |  4   |
+    +--------+---------+------+
+
+    Returns:
+        float: Effective operational score symbolizing time effectively after subtracting handover and RLF delays.
+    """
     # Constants for interruption times
     ts = 50 / 1000  # Convert ms to seconds
     t_nas = 1000 / 1000  # Convert ms to seconds
@@ -60,7 +111,19 @@ def calculate_mro_metric(data):
     return D
 
 
-def haversine(lat1, lon1, lat2, lon2):
+def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Use the coordinates of 2 distinct points to find the great-circle distance between said points.
+
+        Parameters:
+            lat1 (float): Latitude of the first point, in degrees.
+            lon1 (float): Longitude of the first point, in degrees.
+            lat2 (float): Latitude of the second point, in degrees.
+            lon2 (float): Longitude of the second point, in degrees.
+
+        Returns:
+            float: Distance between the two points in kilometers.
+    """
     # Convert latitude and longitude from degrees to radians
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
 
@@ -77,17 +140,16 @@ def haversine(lat1, lon1, lat2, lon2):
     return constants.RADIUS_EARTH_EQUATOR_KM * c
 
 
-def calculate_received_power(distance_km, frequency_mhz):
+def calculate_received_power(distance_km: float, frequency_mhz: int) -> float:
     """
     Calculate received power using the Free-Space Path Loss (FSPL) model.
 
     Parameters:
-    - tx_power_dbm: Transmit power in dBm.
-    - distance_km: Distance between UE and cell in kilometers.
-    - frequency_mhz: Frequency in MHz.
+        distance_km (float): Distance between UE and cell in kilometers.
+        frequency_mhz (float): Frequency in MHz.
 
     Returns:
-    - Received power in dBm.
+        float: Received power in dBm.
     """
     tx_power_dbm = constants.tx_power_dbm
 
@@ -104,7 +166,30 @@ def calculate_received_power(distance_km, frequency_mhz):
     return received_power_dbm
 
 
-def concatenate_ue_to_topology(ue_data, topology):
+def concatenate_ue_to_topology(ue_data: pd.DataFrame, topology: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each UE data point, find the geographically subsequent cell from the network topology using the Haversine formula.
+    Return a combined DataFrame including selected fields from both UE and cell topology data.
+
+   Parameters:
+        ue_data (pd.DataFrame): DataFrame containing UE positions with 'mock_ue_id', 'longitude', 'latitude', and 'tick'.
+        topology (pd.DataFrame): DataFrame of cell positions and metadata with 'cell_lat', 'cell_lon', 'cell_id',
+                                 'cell_az_deg', and 'cell_carrier_freq_mhz'.
+
+
+    +------------+-------------+-------------+------+-----------+-----------+---------+-------------+------------------------+
+    |      ue_id |     lon     |     lat     | tick | cell_lat  | cell_lon  | cell_id | cell_az_deg | cell_carrier_freq_mhz  |
+    +============+=============+=============+======+===========+===========+=========+=============+========================+
+    |     0      | -22.625309  | 59.806764   |  0   |  -90.0    | -180.0    |    1    |     0.0     |        2100.0          |
+    |     0      | -22.625309  | 59.806764   |  0   |    0.0    |   0.0     |    2    |   120.0     |        2100.0          |
+    |     0      | -22.625309  | 59.806764   |  0   |   90.0    |  180.0    |    3    |   240.0     |        2100.0          |
+    |     1      | 119.764151  | 54.857584   |  0   |  -90.0    | -180.0    |    1    |     0.0     |        2100.0          |
+    |     1      | 119.764151  | 54.857584   |  0   |    0.0    |   0.0     |    2    |   120.0     |        2100.0          |
+    +------------+-------------+-------------+------+-----------+-----------+---------+-------------+------------------------+
+
+    Returns:
+        pd.DataFrame: DataFrame combining each UE record with its closest cell's metadata.
+    """
     # Initialize an empty list to store the results
     results = []
 
@@ -146,7 +231,30 @@ def concatenate_ue_to_topology(ue_data, topology):
     return full_data
 
 
-def connect_ue_to_all_cells(ue_data, topology):
+def connect_ue_to_all_cells(ue_data: pd.DataFrame, topology: pd.DataFrame) -> pd.DataFrame:
+    """
+    Combines relevant data from both the ue_data and topology DataFrames into a single DataFrame.
+    For each UE in ue_data, this function creates a new entry for every cell in topology,
+    combining UE attributes with cell attributes (e.g., latitude, longitude, cell ID)
+
+    Parameters:
+        ue_data (pd.DataFrame): DataFrame containing UE data with 'mock_ue_id', 'longitude', 'latitude', and 'tick'.
+        topology (pd.DataFrame): DataFrame containing all cell definitions and positions.
+
+
+    +------------+-------------+-------------+------+----+-----------+
+    | mock_ue_id |     lon     |     lat     | cell_lat  | cell_lon  |
+    +============+=============+=============+======+====+===========+
+    |     0      | -22.625309  | 59.806764   |  -90.0    | -180.0    |
+    |     0      | -22.625309  | 59.806764   |    0.0    |   0.0     |
+    |     0      | -22.625309  | 59.806764   |   90.0    |  180.0    |
+    |     1      | 119.764151  | 54.857584   |  -90.0    | -180.0    |
+    |     1      | 119.764151  | 54.857584   |    0.0    |   0.0     |
+    +------------+-------------+-------------+-----------+-----------+
+
+    Returns:
+        pd.DataFrame: Combined DataFrame where each UE is paired with every cell.
+    """
     # Initialize an empty list to store the results
     results = []
 
@@ -187,14 +295,44 @@ def connect_ue_to_all_cells(ue_data, topology):
 
 def add_sinr_column(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Adds a 'sinr_db' column that calculates SINR per UE–cell pair
-    based on received power and interference from other cells on the same frequency.
+    Adds a 'sinr_db' column to the input DataFrame, computing the Signal-to-Interference-plus-Noise Ratio (SINR)
+    for each UE–cell pair based on received signal power, background noise, and interference.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame with 'ue_id', 'cell_rxpower_dbm', and 'cell_carrier_freq_mhz' per row.
+
+    Returns:
+        pd.DataFrame: Updated DataFrame with an additional 'sinr_db' column.
     """
     # Convert background noise from dB to linear scale
     noise_linear = 10 ** (constants.LATENT_BACKGROUND_NOISE_DB / 10)
 
     # Compute SINR for each row (UE–cell pair), given its group
-    def compute_row_level_sinr(row, group):
+    def compute_row_level_sinr(row: pd.Series, group: pd.DataFrame) -> float: # where cell column? [DONE]
+        """
+        Computes the SINR for a single UE–cell pair by removing interference and noise from the received signal power.
+
+       Parameters:
+            row (pd.Series): Current row containing signal data.
+            group (pd.DataFrame): Group of UE–cell rows sharing the same UE and frequency.
+
+        +--------+---------+------------------+------------------------+
+        | ue_id  | cell_id | cell_rxpower_dbm | cell_carrier_freq_mhz |
+        +========+=========+==================+========================+
+        |   0    |    1    |   -100.311970    |         2100.0         |
+        |   0    |    2    |    -99.841523    |         2100.0         |
+        |   1    |    1    |   -100.294405    |         2100.0         |
+        |   1    |    2    |   -100.132420    |         2100.0         |
+        |   2    |    1    |   -100.650003    |         2100.0         |
+        |   2    |    2    |   -100.456381    |         2100.0         |
+        |   3    |    1    |   -100.987321    |         2100.0         |
+        |   3    |    2    |   -100.864529    |         2100.0         |
+        +--------+---------+------------------+------------------------+
+
+
+        Returns:
+            float: The computed SINR value in decibels for the current UE–cell pair.
+        """
         signal_dbm = row["cell_rxpower_dbm"]
 
         # Exclude the current row (serving cell) to compute interference
@@ -214,10 +352,48 @@ def add_sinr_column(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _check_hyst(ue_data_for_current_tick, past_attachment, hyst):
+def _check_hyst(ue_data_for_current_tick: pd.DataFrame, past_attachment: pd.DataFrame, hyst: float) -> pd.DataFrame:
     """
-    Function to update UE data based on hysteresis condition and past attachment.
-    It selects the best data between current tick and past attachment for each ue_id.
+    Evaluates if a newly strongest cell is significantly better than the previously attached cell
+    by applying the hysteresis (hyst) margin.
+
+    Hyst: Ensures the new strongest cell is *significantly* better than the currently attached one
+    (i.e., current_rxpower - past_rxpower ≥ hyst) to prevent unnecessary handovers.
+
+    Parameters:
+        ue_data_for_current_tick (pd.DataFrame): Current tick signal data containing 'ue_id', 'cell_id', and 'cell_rxpower_dbm'.
+        past_attachment (pd.DataFrame): Previous attachment decisions per UE.
+        hyst (float): Hysteresis threshold to validate signal superiority.
+
+    +--------------------------------------------+
+    | ue_data_for_current_tick                   |
+    +--------+---------+-------------------------+
+    | ue_id  | cell_id | cell_rxpower_dbm | tick |
+    +========+=========+=========================+
+    |   0    |    1    |   -100.311970    |  1   |
+    |   0    |    2    |    -99.841523    |  1   |
+    |   1    |    1    |   -100.294405    |  1   |
+    |   1    |    2    |   -100.132420    |  1   |
+    |   2    |    1    |   -100.650003    |  1   |
+    |   2    |    2    |   -100.456381    |  1   |
+    +--------+---------+-------------------------+
+
+    +--------------------------------------------+
+    | past_attachment                            |
+    +--------+---------+-------------------------+
+    | ue_id  | cell_id | cell_rxpower_dbm | tick |
+    +========+=========+=========================+
+    |   0    |    1    |   -100.723849    |  0   |
+    |   0    |    2    |    -99.841523    |  0   |
+    |   1    |    1    |   -100.933915    |  0   |
+    |   1    |    2    |   -100.132420    |  0   |
+    |   2    |    1    |    -99.298523    |  0   |
+    |   2    |    2    |   -100.122649    |  0   |
+    +--------+---------+-------------------------+
+
+    Returns:
+        pd.DataFrame: Updated attachment decisions after applying the hysteresis condition.
+
     """
     # Merge the current tick data with past attachment data (to compare past power)
     merged_df = pd.merge(
@@ -281,7 +457,52 @@ def _check_hyst(ue_data_for_current_tick, past_attachment, hyst):
     return final_df
 
 
-def _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachment):
+def _check_ttt(
+    strongest_server_history: List[pd.DataFrame],
+    ue_data_for_current_tick: pd.DataFrame,
+    past_attachment: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Ensures that a UE only switches to a new cell if it has consistently been
+    the strongest cell for a full Time-To-Trigger (TTT) duration.
+
+    TTT: Ensures signal superiority is sustained over time by only allowing a handover if the same cell has remained
+    the strongest for the full TTT duration.
+
+    Parameters:
+        strongest_server_history (list): List of DataFrames tracking the strongest cell per UE for past ticks (length = TTT - 1).
+        ue_data_for_current_tick (pd.DataFrame): DataFrame containing current tick’s UE–cell signal data.
+        past_attachment (pd.DataFrame): DataFrame with previous UE–cell attachment state.
+
+        +--------------------------------------------+
+        | ue_data_for_current_tick                   |
+        +--------+---------+-------------------------+
+        | ue_id  | cell_id | cell_rxpower_dbm | tick |
+        +========+=========+=========================+
+        |   0    |    1    |   -100.311970    |  1   |
+        |   0    |    2    |    -99.841523    |  1   |
+        |   1    |    1    |   -100.294405    |  1   |
+        |   1    |    2    |   -100.132420    |  1   |
+        |   2    |    1    |   -100.650003    |  1   |
+        |   2    |    2    |   -100.456381    |  1   |
+        +--------+---------+-------------------------+
+
+        +--------------------------------------------+
+        | past_attachment                            |
+        +--------+---------+-------------------------+
+        | ue_id  | cell_id | cell_rxpower_dbm | tick |
+        +========+=========+=========================+
+        |   0    |    1    |   -100.723849    |  0   |
+        |   0    |    2    |    -99.841523    |  0   |
+        |   1    |    1    |   -100.933915    |  0   |
+        |   1    |    2    |   -100.132420    |  0   |
+        |   2    |    1    |    -99.298523    |  0   |
+        |   2    |    2    |   -100.122649    |  0   |
+        +--------+---------+-------------------------+
+
+    Returns:
+        pd.DataFrame: Updated UE–cell attachment decisions after applying the TTT rule.
+    """
     current_attachment_list = []  # contains updated ue -> cell + current data
     merged_df = pd.concat(strongest_server_history, ignore_index=True)
 
@@ -327,7 +548,53 @@ def _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachme
     return current_attachment
 
 
-def _check_rlf_threshold(df, current_tick_df, rlf_threshold):
+def _check_rlf_threshold(df: pd.DataFrame, current_tick_df: pd.DataFrame, rlf_threshold: float) -> pd.DataFrame:
+    """
+    Updates the dataframe based on the SINR threshold and data from `current_tick_df`.
+
+    For each `ue_id`, if SINR in the dataframe is below `rlf_threshold`:
+    - Attempts to update using the best SINR from `current_tick_df`.
+    - If no update is found, marks the row as RLF by setting key fields to fallback values.
+
+    Parameters:
+        df (pd.DataFrame): Current UE data.
+        current_tick_df (pd.DataFrame): Most recent tick-level UE data.
+        rlf_threshold (float): SINR threshold for fallback.
+
+
+      +------------------------------------------------------+
+      | df                                                   |
+      +--------+---------+------------------+------+---------+
+      | ue_id  | cell_id | cell_rxpower_dbm | tick | sinr_db |
+      +========+=========+===================================+
+      |   0    |    1    |   -100.311970    |  1   | 10.517  |
+      |   0    |    2    |    -99.841523    |  1   | 12.125  |
+      |   1    |    1    |   -100.294405    |  1   | 11.229  |
+      |   1    |    2    |   -100.132420    |  1   | 11.672  |
+      |   0    |    1    |   -100.311970    |  2   | 13.930  |
+      |   0    |    2    |    -99.841523    |  2   | 14.739  |
+      |   1    |    1    |   -100.294405    |  2   | 12.229  |
+      |   1    |    2    |   -100.132420    |  2   | 15.222  |
+      +--------+---------+------------------+------+---------+
+
+      +------------------------------------------------------+
+      | current_tick_df                                      |
+      +--------+---------+------------------+------+---------+
+      | ue_id  | cell_id | cell_rxpower_dbm | tick | sinr_db |
+      +========+=========+===================================+
+      |   0    |    1    |   -100.311970    |  1   | 10.517  |
+      |   0    |    2    |    -99.841523    |  1   | 12.125  |
+      |   1    |    1    |   -100.294405    |  1   | 11.229  |
+      |   1    |    2    |   -100.132420    |  1   | 11.672  |
+      |   0    |    1    |   -100.311970    |  2   | 13.930  |
+      |   0    |    2    |    -99.841523    |  2   | 14.739  |
+      |   1    |    1    |   -100.294405    |  2   | 12.229  |
+      |   1    |    2    |   -100.132420    |  2   | 15.222  |
+      +--------+---------+------------------+------+---------+
+
+    Returns:
+        pd.DataFrame: Updated DataFrame with applied fallback logic.
+    """
     # Create a copy to avoid modifying the original
     updated_df = df.copy()
 
@@ -381,12 +648,34 @@ def _check_rlf_threshold(df, current_tick_df, rlf_threshold):
     return updated_df
 
 
-def _check_hyst_in_current_tick(
-    ue_data_for_current_tick: pd.DataFrame,
-    current_attachment: pd.DataFrame,
-    past_attachment: pd.DataFrame,
-    hyst: float,
-) -> pd.DataFrame:
+def _check_hyst_in_current_tick(ue_data_for_current_tick: pd.DataFrame, current_attachment: pd.DataFrame, past_attachment: pd.DataFrame, hyst: float) -> pd.DataFrame:
+    """
+    Applies a hyst check to the data in the current timestamp to prevent unnecessary handovers.
+    If the new cell's signal is not stronger than the previous cell by at least `hyst` dB,
+    the UE remains attached to the same cell as the previous tick.
+
+    Parameters:
+         ue_data_for_current_tick (pd.DataFrame): Signal strength data for UE–cell pairs in the current tick.
+        current_attachment (pd.DataFrame): Proposed attachment decisions for the current tick.
+        past_attachment (pd.DataFrame): Previous tick’s attachment state.
+        hyst (float): Hysteresis threshold in dB.
+
+    +---------+--------+------------------+
+    | cell_id | ue_id  | cell_rxpower_dbm |
+    +=========+========+==================+
+    |    1    |   0    |   -100.311970    |
+    |    2    |   0    |    -99.841523    |
+    |    1    |   1    |   -100.294405    |
+    |    2    |   1    |   -100.132420    |
+    |    1    |   2    |   -100.650003    |
+    |    2    |   2    |   -100.456381    |
+    |    1    |   3    |   -100.987321    |
+    |    2    |   3    |   -100.864529    |
+    +---------+--------+------------------+
+
+    Returns:
+        pd.DataFrame: Updated UE–cell attachments after hysteresis filtering.
+    """
     if current_attachment.shape != past_attachment.shape:
         raise AssertionError(
             "current attachment and past attachment are not consistent. Check their shape, ue_id and cell_id columns."
@@ -420,14 +709,27 @@ def _check_hyst_in_current_tick(
     return current_attachment
 
 
-def _perform_attachment_hyst_ttt_per_tick(
-    ue_data_for_current_tick,
-    strongest_server_history,
-    past_attachment,
-    ttt,
-    hyst,
-    use_strongest_server=False,
-):
+def _perform_attachment_hyst_ttt_per_tick(ue_data_for_current_tick: pd.DataFrame, strongest_server_history: List[pd.DataFrame],
+                                          past_attachment: pd.DataFrame, ttt: int, hyst: float, use_strongest_server: bool = False,) -> tuple[List[pd.DataFrame], pd.DataFrame]:
+    """
+    Determines and updates the cell selction for each user for a given tick using hysteresis and time-to-trigger (TTT) rules.
+    This function either attaches the UE to the strongest server or evaluates attachment changes based on hyst
+    and TTT rules. The attachment decisions are updated, and the history of the strongest server is maintained across ticks.
+
+    Parameters:
+        ue_data_for_current_tick (pd.DataFrame): UE data for the current tick containing measurements like
+                                                  `cell_rxpower_dbm` for each UE.
+        strongest_server_history (List[pd.DataFrame]): A history of the strongest server attachments for previous ticks.
+        past_attachment (pd.DataFrame): Attachment state of the UE from the previous tick.
+        ttt (int): Time-to-trigger (TTT) threshold for attachment decision, in number of ticks.
+        hyst (float): Hysteresis threshold in dB for attachment decision.
+        use_strongest_server (bool): If True, forces attachment to the strongest server; otherwise, follows TTT and hyst rules.
+
+    Returns:
+        Tuple[List[pd.DataFrame], pd.DataFrame]:
+            - Updated list of the strongest server history (List of DataFrames).
+            - Current UE-cell attachment decision (DataFrame).
+    """
     current_strongest = ue_data_for_current_tick.loc[
         ue_data_for_current_tick.groupby("ue_id")["cell_rxpower_dbm"].idxmax()
     ]
@@ -464,7 +766,22 @@ def _perform_attachment_hyst_ttt_per_tick(
     return strongest_server_history, current_attachment
 
 
-def perform_attachment_hyst_ttt(ue_data, hyst, ttt, rlf_threshold):
+def perform_attachment_hyst_ttt(ue_data: pd.DataFrame, hyst: float, ttt: int, rlf_threshold: float) -> pd.DataFrame:
+    """
+    Performs UE-to-cell attachment across all ticks in the simulation.
+    Initially, when insufficient history is available, the UE is naively attached to the strongest available cell.
+    Once the required Time-To-Trigger (TTT) history is built up, Hysteresis (Hyst) and TTT logic are applied to ensure
+    more stable and realistic attachment decisions.
+
+    Parameters:
+        ue_data (pd.DataFrame): UE measurements with 'tick' and 'cell_rxpower_dbm'.
+        hyst (float): Hysteresis threshold in dB.
+        ttt (int): Time-to-trigger window size.
+        rlf_threshold (float): Minimum signal level to maintain a connection.
+
+    Returns:
+        pd.DataFrame: DataFrame of all UE-cell attachment states across all ticks.
+    """
     strongest_server_history = []
     current_attachment = pd.DataFrame()
 
@@ -507,18 +824,29 @@ def perform_attachment_hyst_ttt(ue_data, hyst, ttt, rlf_threshold):
     return cell_attached_df
 
 
-def find_hyst_diff(df2):
+def find_hyst_diff(df2: pd.DataFrame) -> float:
+    """
+    Finds the highest difference in the 'cell_rxpower_dbm' column
+    by calculating the absolute difference between consecutive rows.
+
+    Parameters:
+        df2 (pd.DataFrame): Input DataFrame containing the 'cell_rxpower_dbm' column.
+
+    Returns:
+        float: The maximum absolute difference between consecutive values
+    """
+    # Make a copy of the dataframe to avoid modifying the original one
     df = df2.copy()
-    # Replace infinite values with NaN
+
+    # Replace infinite values with NaN in 'cell_rxpower_dbm'
     df["cell_rxpower_dbm"] = df["cell_rxpower_dbm"].replace([np.inf, -np.inf], np.nan)
 
-    # Drop rows where the 'cell_rxpower_dbm' is NaN and create a copy
+    # Drop rows where 'cell_rxpower_dbm' is NaN
     df_clean = df.dropna(subset=["cell_rxpower_dbm"]).copy()
 
-    # Calculate the difference between consecutive rows in the 'cell_rxpower_dbm' column
-    df_clean["rxpower_diff"] = df_clean["cell_rxpower_dbm"].diff().abs()
+    # Calculate the difference between the maximum and minimum values in the cleaned data
+    max_val = df_clean["cell_rxpower_dbm"].max()
+    min_val = df_clean["cell_rxpower_dbm"].min()
 
-    # Find the highest difference
-    max_diff = df_clean["rxpower_diff"].max()
-
-    return max_diff
+    # Return the difference between the max and min values
+    return max_val - min_val
