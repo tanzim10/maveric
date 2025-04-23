@@ -4,10 +4,12 @@ from notebooks.MRO_library import (
     _check_hyst,
     _check_ttt,
     _perform_attachment_hyst_ttt_per_tick,
+    _check_hyst_in_current_tick,
 )
 import unittest
 import pandas as pd
 import numpy as np
+import os
 
 
 class TestMROLibrary(unittest.TestCase):
@@ -275,5 +277,175 @@ class TestMROLibrary(unittest.TestCase):
         result = find_hyst_diff(df)
         self.assertEqual(result, 4)
 
+    def test_check_hyst(self):
+        input_per_tick = pd.DataFrame({
+            'ue_id': [1, 1, 2, 2, 3, 3],
+            'cell_id': [1, 2, 1, 2, 1, 2],
+            'cell_rxpower_dbm': [-80, -75, -90, -85, -95, -92]
+        })
+        past_data = pd.DataFrame({
+            'ue_id': [1, 2, 3],
+            'cell_id_past': [2, 1, 2],  # Past cell_id each UE was attached to
+            'cell_rxpower_dbm_past': [-78, -88, -93]  # Past received power levels
+        })
+
+        expected_result = pd.DataFrame({
+            'ue_id': [1, 2, 3],
+            'cell_id': [2, 2, 2],
+            'cell_rxpower_dbm': [-75.0, -85.0, -92.0]
+        }).sort_values(by='ue_id').reset_index(drop=True)
+
+        # if everything went right ue_id 2 should switch if hyst == 5
+        hyst = 5
+        result = _check_hyst(input_per_tick, past_data, hyst)
+        result = result.sort_values(by='ue_id').reset_index(drop=True)
+
+        # Dataframe called 'Expected' using values from result
+        
+        result = result.astype({'ue_id': 'float', 'cell_id': 'float', 'cell_rxpower_dbm': 'float'})
+        expected_result = expected_result.astype({'ue_id': 'float', 'cell_id': 'float', 'cell_rxpower_dbm': 'float'})
+
+        self.assertTrue(result.equals(expected_result))
+        
+    def test_check_ttt(self):
+        # Example --> _update_current_attachment()
+
+        # consider 3 UEs and 2 cells
+        # TTT = 3
+        # hyst = 5
+
+        # past_attachment: pd.DataFrame --> output of _update_current_attachment() from last tick, last attached cells
+        past_attachment = pd.DataFrame({
+            'ue_id':       [1, 2, 3],
+            'cell_id':          [2, 2, 1],
+            'cell_rxpower_dbm': [70, 75, 90]
+        }).astype({
+            'ue_id': 'int',
+            'cell_id': 'int',
+            'cell_rxpower_dbm': 'float'
+        })
+
+        df1 = pd.DataFrame({
+            'ue_id':       [1, 2, 3],
+            'cell_id':          [1, 1, 2],
+            'cell_rxpower_dbm': [80, 75, 90]
+        }).astype({
+            'ue_id': 'int',
+            'cell_id': 'int',
+            'cell_rxpower_dbm': 'float'
+        })
+
+        df2 = pd.DataFrame({
+            'ue_id':       [1, 2, 3],
+            'cell_id':          [2, 1, 2],
+            'cell_rxpower_dbm': [75, 76, 100]
+        }).astype({
+            'ue_id': 'int',
+            'cell_id': 'int',
+            'cell_rxpower_dbm': 'float'
+        })
+
+        # strongest_server_history: List[pd.DataFrame] --> strongest cell for previous TTT-1 ticks
+        strongest_server_history = [df1, df2] # len is TTT-1 = 3-1 = 2
+
+        # ue_data_for_current_tick: pd.DataFrame --> contains calculated rx_power for UEs x cells
+        ue_data_for_current_tick = pd.DataFrame({
+            'ue_id':       [1, 1, 2, 2, 3, 3],
+            'cell_id':          [1, 2, 1, 2, 1, 2],
+            'cell_rxpower_dbm': [68, 76, 40, 74, 91, 102]
+        }).astype({
+            'ue_id': 'int',
+            'cell_id': 'int',
+            'cell_rxpower_dbm': 'float'
+        })
+
+        current_attachment = _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachment)
+        
+        
+        # ue 1 didn't switch attachment
+        # ue 2 switched attachment
+        # ue 3 switched attachment
+        
+        # Creating expected datasets for current_attachment as it the output
+        
+        current_attachment_expected = pd.DataFrame({
+            'ue_id': [1, 2, 3],
+            'cell_id': [2, 1, 2],
+            'cell_rxpower_dbm': [76, 40, 102]
+        }).astype({
+            'ue_id': 'float',
+            'cell_id': 'float',
+            'cell_rxpower_dbm': 'float'
+        })
+        (current_attachment).astype({
+            'ue_id': 'float',
+            'cell_id': 'float',
+            'cell_rxpower_dbm': 'float'
+        })
+        
+        pd.testing.assert_frame_equal(current_attachment_expected, current_attachment)
+
+    def test_check_hyst_in_current_tick(self):
+        # Example --> _check_hyst_in_current_tick()
+        # consider 3 UEs and 2 cells
+
+        TTT = 3
+        hyst = 5
+
+        # past_attachment: pd.DataFrame --> output of _update_current_attachment() from last tick, last attached cells
+        past_attachment = pd.DataFrame({
+            'ue_id':       [1, 2, 3],
+            'cell_id':          [2, 2, 1],
+            'cell_rxpower_dbm': [70, 75, 90]
+        }).astype({
+            'ue_id': 'int',
+            'cell_id': 'int',
+            'cell_rxpower_dbm': 'float'
+        })
+
+        # ue_data_for_current_tick: pd.DataFrame --> contains calculated rx_power for UEs x cells
+        ue_data_for_current_tick = pd.DataFrame({
+            'ue_id':       [1, 1, 2, 2, 3, 3],
+            'cell_id':          [1, 2, 1, 2, 1, 2],
+            'cell_rxpower_dbm': [68, 76, 40, 74, 91, 102]
+        }).astype({
+            'ue_id': 'int',
+            'cell_id': 'int',
+            'cell_rxpower_dbm': 'float'
+        })
+
+        # this df is calculated inside _update_current_attachment()
+        current_attachment = pd.DataFrame({
+            "ue_id": [1, 2, 3],
+            "cell_id": [2, 1, 2],
+            "cell_rxpower_dbm": [76, 40, 102]
+        }).astype({
+            'ue_id': 'int',
+            'cell_id': 'int',
+            'cell_rxpower_dbm': 'float'
+        })
+
+        # as (mock_ue_id, cell_id) = (2, 1) connects to 40 dbm which doesn't satisfy hyst
+        # as previous connection (2, 2) offers 74 dbm, so revert.
+        current_attachment = _check_hyst_in_current_tick(ue_data_for_current_tick, current_attachment, past_attachment, hyst).astype({
+            'ue_id': 'float',
+            'cell_id': 'float',
+            'cell_rxpower_dbm': 'float'
+        })
+        
+        # Creating expected data
+        
+        current_attachment_expected = pd.DataFrame({
+            'ue_id': [1, 2, 3],
+            'cell_id': [2, 2, 2],
+            'cell_rxpower_dbm': [76, 74, 102],
+        }).astype({
+            'ue_id': 'float',
+            'cell_id': 'float',
+            'cell_rxpower_dbm': 'float'
+        })
+        
+        pd.testing.assert_frame_equal(current_attachment_expected, current_attachment)
+        
 if __name__ == "__main__":
     unittest.main()
