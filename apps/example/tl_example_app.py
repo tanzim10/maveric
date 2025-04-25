@@ -6,438 +6,43 @@
 # --- Includes dummy topology generation and consistent naming ---
 # --- Generates ./gen_tl_data/ and ./plots/ directories from where this script is run ---
 
-import os
-from pathlib import Path
-import sys
 import json
 import logging
-from typing import Dict, Tuple
+import os
+import sys
+from pathlib import Path
 
-import pandas as pd
 import numpy as np
-from scipy.spatial import Voronoi, voronoi_plot_2d # TODO: Check if scipy added to requirements
-import matplotlib.pyplot as plt
-from matplotlib import cm
-
-# * --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO, # Set to DEBUG for more verbose output
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+import pandas as pd
 
 # * --- Path setup (USER MUST MODIFY IF NEEDED) ---
-root_dir = Path().absolute().parent # ! FIXME: this path should be absolute: home to maveric
+root_dir = Path().absolute().parent  # ! FIXME: this path should be absolute: home to maveric
 RADP_ROOT = os.getenv("MAVERIC_ROOT", str(root_dir))
 sys.path.insert(0, RADP_ROOT)
 
-# * --- Imports from RADP library (with fallback definitions) ---
-from radp.digital_twin.traffic_load_model.city_dt_gen import city_digitaltwin_generator
-from radp.digital_twin.utils import constants as c
-from radp.digital_twin.utils.gis_tools import GISTools
-
-logger.info("Successfully imported constants and GISTools from RADP library.")
-
-# * --- Topology Generation Function ---
-def generate_dummy_topology(
-    num_sites: int,
-    cells_per_site: int = 3,
-    lat_range: Tuple[float, float] = (40.7, 40.8),
-    lon_range: Tuple[float, float] = (-74.05, -73.95),
-    start_ecgi: int = 1001,
-    start_enodeb_id: int = 1,
-    default_tac: int = 1,
-    default_freq: int = 2100,
-    default_power_dbm: float = 25.0,
-    azimuth_step: int = 120,
-) -> pd.DataFrame:
-    """Generates a DataFrame with dummy topology data."""
-    
-    logger.info(f"Generating dummy topology for {num_sites} sites with {cells_per_site} cells each.")
-    
-    topology_data = []
-    current_ecgi = start_ecgi
-    current_enodeb_id = start_enodeb_id
-
-    # Define column names using constants if available, otherwise fallback strings
-    COL_CELL_ID = getattr(c, 'CELL_ID', 'cell_id')
-    COL_CELL_LAT = getattr(c, 'CELL_LAT', 'cell_lat')
-    COL_CELL_LON = getattr(c, 'CELL_LON', 'cell_lon')
-    COL_CELL_AZ_DEG = getattr(c, 'CELL_AZ_DEG', 'cell_az_deg')
-    COL_CELL_TXPWR_DBM = getattr(c, 'CELL_TXPWR_DBM', 'cell_txpwr_dbm')
-    COL_ECGI = getattr(c, 'ECGI', 'ecgi')
-    COL_SITE_ID = getattr(c, 'SITE_ID', 'site_id')
-    COL_CELL_NAME = getattr(c, 'CELL_NAME', 'cell_name')
-    COL_ENODEB_ID = getattr(c, 'ENODEB_ID', 'enodeb_id')
-    COL_TAC = getattr(c, 'TAC', 'tac')
-    COL_CELL_CARRIER_FREQ_MHZ = getattr(c, 'CELL_CARRIER_FREQ_MHZ', 'cell_carrier_freq_mhz')
-
-    for i in range(num_sites):
-        site_lat = np.random.uniform(lat_range[0], lat_range[1])
-        site_lon = np.random.uniform(lon_range[0], lon_range[1])
-        site_id_str = f"Site{i+1}"
-
-        for j in range(cells_per_site):
-            cell_az = (j * azimuth_step) % 360
-            cell_id_str = f"cell_{current_enodeb_id}_{cell_az}"
-            cell_name_str = f"Cell{j+1}"
-
-            row = {
-                COL_ECGI: current_ecgi,
-                COL_SITE_ID: site_id_str,
-                COL_CELL_NAME: cell_name_str,
-                COL_ENODEB_ID: current_enodeb_id,
-                COL_CELL_AZ_DEG: cell_az,
-                COL_TAC: default_tac,
-                COL_CELL_LAT: site_lat,
-                COL_CELL_LON: site_lon,
-                COL_CELL_ID: cell_id_str,
-                COL_CELL_CARRIER_FREQ_MHZ: default_freq,
-                COL_CELL_TXPWR_DBM: default_power_dbm + np.random.uniform(-2, 2)
-            }
-            topology_data.append(row)
-        
-        current_ecgi += 1
-        current_enodeb_id += 1
-
-    df = pd.DataFrame(topology_data)
-    column_order = [ # Define the exact desired order
-        COL_ECGI, COL_SITE_ID, COL_CELL_NAME, COL_ENODEB_ID, COL_CELL_AZ_DEG, COL_TAC,
-        COL_CELL_LAT, COL_CELL_LON, COL_CELL_ID, COL_CELL_CARRIER_FREQ_MHZ,
-        COL_CELL_TXPWR_DBM
-    ]
-    df = df.reindex(columns=column_order) # Ensure order and presence of all columns
-    
-    logger.info(f"Generated dummy topology DataFrame with {len(df)} cells.")
-    
-    return df
-
-# --- Analysis Functions (Simplified checks, ensure they use constants) ---
-def _radp_model_rftwin(
-    trafficload_ue_data: pd.DataFrame,
-    site_config_data: pd.DataFrame,
-    path_loss_exponent: float = 3.5,
-    ref_rx_power: float = -50,
-) -> pd.DataFrame:
-    """Calculates received power (dBm) from each site to each UE using a simplified path loss model."""
-    
-    if trafficload_ue_data.empty or site_config_data.empty:
-        return pd.DataFrame()
-
-    COL_LAT = getattr(c, 'LAT', 'lat')
-    COL_LON = getattr(c, 'LON', 'lon')
-    COL_CELL_LAT = getattr(c, 'CELL_LAT', 'cell_lat')
-    COL_CELL_LON = getattr(c, 'CELL_LON', 'cell_lon')
-    COL_CELL_ID = getattr(c, 'CELL_ID', 'cell_id')
-    COL_CELL_TXPWR_DBM = getattr(c, 'CELL_TXPWR_DBM', 'cell_txpwr_dbm')
-
-    req_ue_cols = [COL_LAT, COL_LON, "tick", "ue_id"]
-    req_site_cols = [COL_CELL_LAT, COL_CELL_LON, COL_CELL_ID, COL_CELL_TXPWR_DBM]
-
-    if not all(col in trafficload_ue_data.columns for col in req_ue_cols):
-        missing = [col for col in req_ue_cols if col not in trafficload_ue_data.columns]
-        logger.error(f"UE data missing cols: {missing}")
-        return pd.DataFrame()
-
-    if not all(col in site_config_data.columns for col in req_site_cols):
-        missing = [col for col in req_site_cols if col not in site_config_data.columns]
-        logger.error(f"Site config missing cols: {missing}")
-        return pd.DataFrame()
-
-    ue_rxpower_data = []
-
-    for _, ue_row in trafficload_ue_data.iterrows():
-        for _, cell_row in site_config_data.iterrows():
-            try:
-                dist_km = GISTools.dist(
-                    (ue_row[COL_LAT], ue_row[COL_LON]),
-                    (cell_row[COL_CELL_LAT], cell_row[COL_CELL_LON])
-                )
-                dist_m = dist_km * 1000.0
-
-                if dist_m > 1e-3:
-                    rx_power = ref_rx_power - 10 * path_loss_exponent * np.log10(dist_m) # ! use _calculate_received_power()
-                else:
-                    rx_power = cell_row[COL_CELL_TXPWR_DBM]
-
-                ue_rxpower_data.append({
-                    "tick": ue_row["tick"],
-                    "ue_id": ue_row["ue_id"],
-                    COL_CELL_ID: cell_row[COL_CELL_ID],
-                    "rx_power_dbm": rx_power,
-                })
-
-            except Exception as e:
-                logger.warning(
-                    f"RxPower calc error UE {ue_row['ue_id']}, Cell {cell_row[COL_CELL_ID]}: {e}"
-                )
-
-    return pd.DataFrame(ue_rxpower_data)
-
-def _determine_serving_cell(ue_rxpower_data: pd.DataFrame) -> pd.DataFrame:
-    """Returns strongest (serving) cell per UE based on rx_power_dbm."""
-    COL_CELL_ID = getattr(c, 'CELL_ID', 'cell_id')
-
-    if ue_rxpower_data.empty or 'rx_power_dbm' not in ue_rxpower_data.columns:
-        return pd.DataFrame(columns=["tick", "ue_id", "serving_cell_id"])
-
-    logger.debug("Determining serving cells...")
-
-    try:
-        idx = ue_rxpower_data.groupby(["tick", "ue_id"])["rx_power_dbm"].idxmax()
-        serving_cell_data = (
-            ue_rxpower_data.loc[idx, ["tick", "ue_id", COL_CELL_ID]]
-            .copy()
-            .rename(columns={COL_CELL_ID: "serving_cell_id"})
-        )
-        logger.debug(f"Determined {len(serving_cell_data)} serving cell assignments.")
-        return serving_cell_data
-    except Exception as e:
-        logger.error(f"Serving cell determination error: {e}")
-        return pd.DataFrame(columns=["tick", "ue_id", "serving_cell_id"])
-
-def _radp_metric_trafficload(
-    trafficload_ue_data: pd.DataFrame,
-    serving_cell_data: pd.DataFrame
-) -> Dict[int, float]:
-    """
-    Computes the standard deviation of UE load across cells for each tick,
-    indicating traffic load imbalance.
-    """
-    if trafficload_ue_data.empty or serving_cell_data.empty:
-        return {}
-
-    ue_data_merged = pd.merge(
-        trafficload_ue_data[["tick", "ue_id"]],
-        serving_cell_data,
-        on=["tick", "ue_id"],
-        how="left"
-    ).dropna(subset=["serving_cell_id"])
-
-    if ue_data_merged.empty:
-        return {}
-
-    ue_counts = ue_data_merged.groupby(["tick", "serving_cell_id"]).size()
-    std_per_tick = ue_counts.groupby(level="tick").std().fillna(0)
-
-    return std_per_tick.to_dict()
-
-
-def energyload_metric_generator(
-    serving_cell_data: pd.DataFrame,
-    ue_rxpower_data: pd.DataFrame,
-    site_config_data: pd.DataFrame,
-    rx_power_threshold: float = -90,
-) -> Dict[int, float]:
-    """
-    Calculates the fraction of base stations that could be turned off per tick
-    without degrading UE service quality below the threshold.
-    """
-    COL_CELL_ID = getattr(c, 'CELL_ID', 'cell_id')
-
-    if serving_cell_data.empty or ue_rxpower_data.empty or site_config_data.empty:
-        return {}
-
-    all_cell_ids = site_config_data[COL_CELL_ID].unique()
-    total_cells = len(all_cell_ids)
-    if total_cells == 0:
-        return {}
-
-    cells_off_per_tick = {}
-
-    for tick in serving_cell_data["tick"].unique():
-        serving_tick = serving_cell_data[serving_cell_data["tick"] == tick]
-        rx_tick = ue_rxpower_data[ue_rxpower_data["tick"] == tick]
-
-        can_be_off_count = 0
-
-        for cell_id in all_cell_ids:
-            ues_served = serving_tick[serving_tick["serving_cell_id"] == cell_id]["ue_id"]
-
-            # Cell is idle — can definitely be off
-            if ues_served.empty:
-                can_be_off_count += 1
-                continue
-
-            # Filter rx data: other cells, only these UEs
-            rx_others = rx_tick[
-                (rx_tick[COL_CELL_ID] != cell_id) &
-                (rx_tick["ue_id"].isin(ues_served))
-            ]
-
-            max_power_others = rx_others.groupby("ue_id")["rx_power_dbm"].max()
-
-            # Check if all served UEs are still covered by other cells
-            try:
-                if max_power_others.loc[ues_served].ge(rx_power_threshold).all():
-                    can_be_off_count += 1
-            except KeyError:
-                # Not all UEs had alt cell data, be conservative
-                continue
-
-        cells_off_per_tick[tick] = can_be_off_count / total_cells
-
-    return cells_off_per_tick
-
-
-# --- Main Runner ---
-def run_traffic_simulation_and_analysis(
-    site_config_data: pd.DataFrame,
-    num_ues: int,
-    spatial_params_path: str,
-    time_params_path: str,
-) -> Dict:
-    logger.info("--- Starting Traffic Simulation and Analysis ---")
-
-    # Load configs
-    try:
-        with open(spatial_params_path, "r") as f:
-            spatial_params = json.load(f)
-        with open(time_params_path, "r") as f:
-            time_params = json.load(f)
-    except Exception as e:
-        logger.error(f"Error loading JSON config: {e}")
-        raise
-
-    # Validate time_weights vs spatial types
-    expected_keys = set(spatial_params.get("types", []))
-    actual_keys = set(time_params.get("time_weights", {}).keys())
-    if expected_keys != actual_keys:
-        logger.warning(f"Mismatch between spatial types {expected_keys} and time_weights keys {actual_keys}!")
-        # Optional: raise error to enforce strict config correctness
-        # raise ValueError("Mismatch between spatial types and time_weights keys.")
-
-    # Generate UE data
-    ue_data = city_digitaltwin_generator(num_ues, spatial_params, time_params, site_config_data)
-    if ue_data.empty:
-        return {"error": "UE generation failed"}
-
-    # Ensure power column is available for analysis
-    site_cfg_analysis = site_config_data.copy()
-    COL_CELL_TXPWR_DBM = getattr(c, 'CELL_TXPWR_DBM', 'cell_txpwr_dbm')
-    if COL_CELL_TXPWR_DBM not in site_cfg_analysis.columns:
-        logger.warning(f"'{COL_CELL_TXPWR_DBM}' missing in site config. Using default value of 25 dBm.")
-        site_cfg_analysis[COL_CELL_TXPWR_DBM] = 25.0  # Default tx power
-
-    # RF Twin: Rx Power and Serving Cell Mapping
-    rx_power = _radp_model_rftwin(ue_data, site_cfg_analysis)
-    serving_cells = _determine_serving_cell(rx_power)
-
-    # Metrics
-    traffic_metric = _radp_metric_trafficload(ue_data, serving_cells)
-    energy_metric = energyload_metric_generator(serving_cells, rx_power, site_cfg_analysis)
-
-    logger.info("--- Traffic Simulation and Analysis Finished ---")
-
-    return {
-        "trafficload_ue_data": ue_data,
-        "ue_rxpower_data": rx_power,
-        "serving_cell_data": serving_cells,
-        "trafficload_metric_per_tick": traffic_metric,
-        "energyload_metric_per_tick": energy_metric,
-    }
-
-
-# --- Plotting ---
-def plot(tick_to_plot: int, results: Dict, site_config_data: pd.DataFrame, spatial_params: Dict):
-    logger.info(f"Generating plot for tick {tick_to_plot}...")
-
-    if Voronoi is None:
-        logger.warning("Scipy missing, cannot plot Voronoi.")
-        return
-
-    if not all(k in results for k in ["trafficload_ue_data", "serving_cell_data"]):
-        logger.warning("Missing data for plot.")
-        return
-
-    ue_data_tick = results["trafficload_ue_data"][results["trafficload_ue_data"]["tick"] == tick_to_plot]
-    serving_cell_tick = results["serving_cell_data"][results["serving_cell_data"]["tick"] == tick_to_plot]
-
-    if ue_data_tick.empty:
-        logger.warning(f"No UE data for tick {tick_to_plot}.")
-        return
-
-    # Merge UE with their serving cell ID
-    ue_data_tick = pd.merge(ue_data_tick, serving_cell_tick[["ue_id", "serving_cell_id"]], on="ue_id", how="left")
-
-    # Column accessors
-    COL_LAT = getattr(c, 'LAT', 'lat')
-    COL_LON = getattr(c, 'LON', 'lon')
-    COL_CELL_LAT = getattr(c, 'CELL_LAT', 'cell_lat')
-    COL_CELL_LON = getattr(c, 'CELL_LON', 'cell_lon')
-    COL_CELL_ID = getattr(c, 'CELL_ID', 'cell_id')
-
-    fig, ax = plt.subplots(figsize=(12, 10))
-
-    # Plot Voronoi if possible
-    if len(site_config_data) >= 4:
-        points = site_config_data[[COL_CELL_LON, COL_CELL_LAT]].values
-        try:
-            vor = Voronoi(points)
-            voronoi_plot_2d(vor, ax=ax, show_vertices=False, line_colors="gray", lw=1, line_alpha=0.6, point_size=0)
-        except Exception as e:
-            logger.warning(f"Voronoi plot failed: {e}")
-
-    # Plot cell towers
-    ax.scatter(
-        site_config_data[COL_CELL_LON], site_config_data[COL_CELL_LAT],
-        marker="^", c="red", label="Cell Towers", s=60, zorder=10 # type: ignore
-    )
-
-    # Plot UEs per serving cell
-    unique_serving = ue_data_tick["serving_cell_id"].dropna().unique()
-    cmap = cm.get_cmap("tab20", max(1, len(unique_serving)))
-
-    handles = [plt.Line2D([0], [0], marker='^', color='w', label='Cell Towers', mfc='red', ms=10)] # type: ignore
-    labels = ['Cell Towers']
-
-    for i, cell_id in enumerate(unique_serving):
-        cell_ues = ue_data_tick[ue_data_tick["serving_cell_id"] == cell_id]
-        if not cell_ues.empty:
-            ax.scatter(
-                cell_ues[COL_LON], cell_ues[COL_LAT],
-                color=cmap(i), alpha=0.6, s=15, zorder=5
-            )
-            label = f"UEs (Cell {cell_id})"
-            if label not in labels:
-                handles.append(plt.Line2D([0], [0], marker='o', color=cmap(i), linestyle='', ms=6)) # type: ignore
-                labels.append(label)
-
-    # UEs without serving cell
-    ues_no_serve = ue_data_tick[ue_data_tick["serving_cell_id"].isna()]
-    if not ues_no_serve.empty:
-        ax.scatter(ues_no_serve[COL_LON], ues_no_serve[COL_LAT], c='black', marker='x', s=15, zorder=5) # type: ignore
-        label = "UEs (No Serving Cell)"
-        if label not in labels:
-            handles.append(plt.Line2D([0],[0], marker='x', color='black', linestyle='', ms=6)) # type: ignore
-            labels.append(label)
-
-    ax.set_xlabel("Longitude")
-    ax.set_ylabel("Latitude")
-    ax.set_title(f"UE Distribution and Serving Cells (Tick {tick_to_plot})")
-    ax.legend(handles=handles, labels=labels, loc='best', fontsize='small')
-    ax.grid(True, linestyle='--', alpha=0.5)
-    plt.tight_layout()
-
-    # Save plot
-    plot_dir = "./plots"
-    os.makedirs(plot_dir, exist_ok=True)
-    filename = os.path.join(plot_dir, f"ue_distribution_tick_{tick_to_plot}.png")
-    try:
-        plt.savefig(filename)
-        logger.info(f"Plot saved: {filename}")
-    except Exception as e:
-        logger.error(f"Save plot failed {filename}: {e}")
-    finally:
-        plt.close(fig)
-
-
-# --- Main Execution Block ---
+# * --- Imports from RADP library ---
+from radp.digital_twin.traffic_load_model.traffic_load_model import run_traffic_simulation_and_analysis  # noqa: E402
+from radp.digital_twin.traffic_load_model.utils.dummy_topology import generate_trisectoral_topology  # noqa: E402
+from radp.digital_twin.traffic_load_model.utils.plot_ues import plot  # noqa: E402
+from radp.digital_twin.utils import constants as c  # noqa: E402
+
+# * --- Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,  # Set to DEBUG for more verbose output
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+logger.info("Successfully imported required modules and constants from the RADP library.")
+
+
+# * --- Main Execution Block ---
 if __name__ == "__main__":
 
-    # --- Configuration ---
+    # * --- Configuration ---
+    GEN_TL_REL_PATH = Path("./gen_tl_data")  # Directory for generated data
+
     GENERATE_TOPOLOGY = True  # <<< Set to False to load your file, True to generate dummy data
-    GEN_TL_REL_PATH = Path("./gen_tl_data") # <<< Directory for generated data
     SITE_CONFIG_CSV = str(GEN_TL_REL_PATH / "topology.csv")
 
     NUM_SITES_TO_GENERATE = 10
@@ -449,14 +54,14 @@ if __name__ == "__main__":
     SPATIAL_PARAMS_JSON = str(GEN_TL_REL_PATH / "spatial_params.json")
     TIME_PARAMS_JSON = str(GEN_TL_REL_PATH / "time_params.json")
     NUM_UES_TO_GENERATE = 500
-    OUTPUT_UE_DATA_DIR = str(GEN_TL_REL_PATH / "ue_data")  # <<< Directory for per-tick UE data CSVs
+    OUTPUT_UE_DATA_DIR = str(GEN_TL_REL_PATH / "ue_data")  # Directory for per-tick UE data CSVs
 
-    # --- Setup: Load or Generate Topology ---
+    # * --- Setup: Load or Generate Topology ---
     site_config_data = None
 
     if GENERATE_TOPOLOGY:
         logger.info("Generating dummy topology data...")
-        site_config_data = generate_dummy_topology(
+        site_config_data = generate_trisectoral_topology(
             num_sites=NUM_SITES_TO_GENERATE,
             cells_per_site=CELLS_PER_SITE_TO_GENERATE,
             lat_range=GENERATION_LAT_RANGE,
@@ -502,7 +107,7 @@ if __name__ == "__main__":
         logger.error("Site config data unavailable.")
         sys.exit(1)
 
-    # --- Create Dummy Spatial/Time JSONs ---
+    # * --- Create Dummy Spatial/Time JSONs ---
     # *** Uses actual type names now if spatial_params exists ***
     if not os.path.exists(SPATIAL_PARAMS_JSON):
         logger.warning(f"{SPATIAL_PARAMS_JSON} not found. Creating dummy data.")
@@ -510,7 +115,7 @@ if __name__ == "__main__":
         default_types = [f"type_{i+1}" for i in range(num_types_generated)]
         dummy_spatial_params = {
             "types": default_types,
-            "proportions": list(np.random.dirichlet(np.ones(num_types_generated)))
+            "proportions": list(np.random.dirichlet(np.ones(num_types_generated))),
         }
         try:
             with open(SPATIAL_PARAMS_JSON, "w") as f:
@@ -548,7 +153,7 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"Could not write dummy {TIME_PARAMS_JSON}: {e}")
 
-    # --- Run Simulation ---
+    # * --- Run Simulation ---
     try:
         results = run_traffic_simulation_and_analysis(
             site_config_data=site_config_data,
@@ -564,14 +169,14 @@ if __name__ == "__main__":
         logger.error("Failed to generate valid UE data from traffic simulation.")
         sys.exit(1)
 
-    # --- Save UE Data Per Tick ---
+    # * --- Save UE Data Per Tick ---
     logger.info(f"Saving generated UE data per tick to directory: {OUTPUT_UE_DATA_DIR}")
     os.makedirs(OUTPUT_UE_DATA_DIR, exist_ok=True)
     generated_ue_data_all_ticks = results["trafficload_ue_data"]
     saved_files_count = 0
     failed_saves = 0
-    COL_LAT = getattr(c, 'LAT', 'lat')  # Get constants/defaults
-    COL_LON = getattr(c, 'LON', 'lon') 
+    COL_LAT = getattr(c, "LAT", "lat")  # Get constants/defaults
+    COL_LON = getattr(c, "LON", "lon")
 
     try:
         required_output_cols = ["ue_id", COL_LON, COL_LAT, "tick"]
@@ -579,13 +184,13 @@ if __name__ == "__main__":
             missing = [col for col in required_output_cols if col not in generated_ue_data_all_ticks.columns]
             raise ValueError(f"Generated UE data missing cols: {missing}")
 
-        for tick in sorted(generated_ue_data_all_ticks['tick'].unique()):
+        for tick in sorted(generated_ue_data_all_ticks["tick"].unique()):
             try:
-                ue_data_tick_snapshot = generated_ue_data_all_ticks[generated_ue_data_all_ticks['tick'] == tick].copy()
-                final_ue_data_for_cco = ue_data_tick_snapshot[['ue_id', COL_LON, COL_LAT, 'tick']].rename(
-                    columns={'ue_id': 'mock_ue_id', COL_LON: 'lon', COL_LAT: 'lat'}
+                ue_data_tick_snapshot = generated_ue_data_all_ticks[generated_ue_data_all_ticks["tick"] == tick].copy()
+                final_ue_data_for_cco = ue_data_tick_snapshot[["ue_id", COL_LON, COL_LAT, "tick"]].rename(
+                    columns={"ue_id": "mock_ue_id", COL_LON: "lon", COL_LAT: "lat"}
                 )
-                final_ue_data_for_cco = final_ue_data_for_cco[['mock_ue_id', 'lon', 'lat', 'tick']]
+                final_ue_data_for_cco = final_ue_data_for_cco[["mock_ue_id", "lon", "lat", "tick"]]
                 output_filename = f"generated_ue_data_for_cco_{tick}.csv"
                 output_csv_path = os.path.join(OUTPUT_UE_DATA_DIR, output_filename)
                 final_ue_data_for_cco.to_csv(output_csv_path, index=False)
@@ -600,8 +205,7 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Failed during per-tick UE data saving: {e}")
 
-
-    # --- Optional: Print Metrics and Plot Results Per Tick ---
+    # *  --- Optional: Print Metrics and Plot Results Per Tick ---
     logger.info("\n--- Analysis Metrics (Per Tick) ---")
 
     if "trafficload_metric_per_tick" in results:
@@ -622,7 +226,7 @@ if __name__ == "__main__":
             spatial_params_plot = json.load(f)
 
         plotted_ticks_count = 0
-        for tick in sorted(generated_ue_data_all_ticks['tick'].unique()):
+        for tick in sorted(generated_ue_data_all_ticks["tick"].unique()):
             logger.debug(f"Generating plot for tick {tick}...")
             plot(tick, results, site_config_data, spatial_params_plot)  # Pass original site_config
             plotted_ticks_count += 1
