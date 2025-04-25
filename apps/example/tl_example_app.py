@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 # --- MODIFIED TO OUTPUT UE DATA CSV FOR CCO (PER TICK) ---
 # --- Includes dummy topology generation and consistent naming ---
+# --- Generates ./gen_tl_data/ and ./plots/ directories from where this script is run ---
 
 import os
 from pathlib import Path
@@ -436,7 +437,8 @@ if __name__ == "__main__":
 
     # --- Configuration ---
     GENERATE_TOPOLOGY = True  # <<< Set to False to load your file, True to generate dummy data
-    SITE_CONFIG_CSV = "./gen_tl_data/topology.csv"
+    GEN_TL_REL_PATH = Path("./gen_tl_data") # <<< Directory for generated data
+    SITE_CONFIG_CSV = str(GEN_TL_REL_PATH / "topology.csv")
 
     NUM_SITES_TO_GENERATE = 10
     CELLS_PER_SITE_TO_GENERATE = 3
@@ -444,10 +446,10 @@ if __name__ == "__main__":
     GENERATION_LON_RANGE = (-74.05, -73.95)
     DEFAULT_CELL_POWER = 25.0
 
-    SPATIAL_PARAMS_JSON = "./gen_tl_data/spatial_params.json"
-    TIME_PARAMS_JSON = "./gen_tl_data/time_params.json"
+    SPATIAL_PARAMS_JSON = str(GEN_TL_REL_PATH / "spatial_params.json")
+    TIME_PARAMS_JSON = str(GEN_TL_REL_PATH / "time_params.json")
     NUM_UES_TO_GENERATE = 500
-    OUTPUT_UE_DATA_DIR = "./gen_tl_data/ue_data"  # <<< Directory for per-tick UE data CSVs
+    OUTPUT_UE_DATA_DIR = str(GEN_TL_REL_PATH / "ue_data")  # <<< Directory for per-tick UE data CSVs
 
     # --- Setup: Load or Generate Topology ---
     site_config_data = None
