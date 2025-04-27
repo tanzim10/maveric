@@ -191,7 +191,7 @@ if __name__ == "__main__":
                     columns={"ue_id": "mock_ue_id", COL_LON: "lon", COL_LAT: "lat"}
                 )
                 final_ue_data_for_cco = final_ue_data_for_cco[["mock_ue_id", "lon", "lat", "tick"]]
-                output_filename = f"generated_ue_data_for_cco_{tick}.csv"
+                output_filename = f"generated_traffic_ue_data_{tick}.csv"
                 output_csv_path = os.path.join(OUTPUT_UE_DATA_DIR, output_filename)
                 final_ue_data_for_cco.to_csv(output_csv_path, index=False)
                 saved_files_count += 1
