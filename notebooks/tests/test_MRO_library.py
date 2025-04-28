@@ -5,11 +5,14 @@ from notebooks.MRO_library import (
     _check_ttt,
     _perform_attachment_hyst_ttt_per_tick,
     _check_hyst_in_current_tick,
+    perform_attachment_hyst_ttt
 )
 import unittest
 import pandas as pd
 import numpy as np
+import pathlib as Path
 import os
+from radp.digital_twin.utils.gis_tools import GISTools
 
 
 class TestMROLibrary(unittest.TestCase):
@@ -260,7 +263,7 @@ class TestMROLibrary(unittest.TestCase):
         result = add_sinr_column(df)
 
         # Check if the result has the 'sinr_db' column and if it's computed correctly
-        print(result)
+        # print(result)
         expected_sinr_values = [-5.000001, 4.999996, -3.000007, 2.999986]
 
         # Check if the SINR values are close to the expected ones
@@ -311,8 +314,9 @@ class TestMROLibrary(unittest.TestCase):
         # Example --> _update_current_attachment()
 
         # consider 3 UEs and 2 cells
-        # TTT = 3
-        # hyst = 5
+
+        TTT = 3
+        hyst = 5
 
         # past_attachment: pd.DataFrame --> output of _update_current_attachment() from last tick, last attached cells
         past_attachment = pd.DataFrame({
@@ -360,7 +364,7 @@ class TestMROLibrary(unittest.TestCase):
         })
 
         current_attachment = _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachment)
-        
+        current_attachment = current_attachment.astype({'ue_id': 'int', 'cell_id': 'int', 'cell_rxpower_dbm': 'float'})
         
         # ue 1 didn't switch attachment
         # ue 2 switched attachment
@@ -373,17 +377,15 @@ class TestMROLibrary(unittest.TestCase):
             'cell_id': [2, 1, 2],
             'cell_rxpower_dbm': [76, 40, 102]
         }).astype({
-            'ue_id': 'float',
-            'cell_id': 'float',
+            'ue_id': 'int',
+            'cell_id': 'int',
             'cell_rxpower_dbm': 'float'
         })
-        (current_attachment).astype({
-            'ue_id': 'float',
-            'cell_id': 'float',
-            'cell_rxpower_dbm': 'float'
-        })
+                
+        result_sorted = current_attachment.sort_values(by = 'ue_id').reset_index(drop = True)
+        expected_sorted = current_attachment_expected.sort_values(by = 'ue_id').reset_index(drop = True)
         
-        pd.testing.assert_frame_equal(current_attachment_expected, current_attachment)
+        self.assertTrue(result_sorted.equals(expected_sorted))
 
     def test_check_hyst_in_current_tick(self):
         # Example --> _check_hyst_in_current_tick()
@@ -428,8 +430,8 @@ class TestMROLibrary(unittest.TestCase):
         # as (mock_ue_id, cell_id) = (2, 1) connects to 40 dbm which doesn't satisfy hyst
         # as previous connection (2, 2) offers 74 dbm, so revert.
         current_attachment = _check_hyst_in_current_tick(ue_data_for_current_tick, current_attachment, past_attachment, hyst).astype({
-            'ue_id': 'float',
-            'cell_id': 'float',
+            'ue_id': 'int',
+            'cell_id': 'int',
             'cell_rxpower_dbm': 'float'
         })
         
@@ -440,12 +442,239 @@ class TestMROLibrary(unittest.TestCase):
             'cell_id': [2, 2, 2],
             'cell_rxpower_dbm': [76, 74, 102],
         }).astype({
-            'ue_id': 'float',
-            'cell_id': 'float',
+            'ue_id': 'int',
+            'cell_id': 'int',
             'cell_rxpower_dbm': 'float'
         })
         
-        pd.testing.assert_frame_equal(current_attachment_expected, current_attachment)
+        self.assertTrue(current_attachment.equals(current_attachment_expected))
         
+    def test_perform_attachement_hyst_ttt(self):
+        
+        # Test parameters
+        ttt = 5
+        hyst = 0.25
+        rlf_threshold = -25
+        
+        # Setting up 'data' parameter         
+        data = pd.DataFrame({
+            'ue_id':        [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1],
+            'loc_x':        [360.0] * 12,
+            'loc_y':        [85.527322, 85.527322, -23.659185, -23.659185,
+                             85.760756, 85.760756, -23.493397, -23.493397,
+                             85.427108, 85.427108, -24.257882, -24.257882],
+            'tick':         [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0],
+            'cell_lat':     [-90.0, 0.0] * 6,  
+            'cell_lon':     [-180.0, 0.0] * 6,
+            'cell_id':      [1, 2] * 6,
+            'cell_az_deg':  [0, 120] * 6,
+            'cell_carrier_freq_mhz': [1500] * 12,
+            'distance_km':  [16.787949, 16.068990, 15.814959, 14.783906,
+                             16.789278, 16.071715, 15.817455, 14.776874,
+                             16.787378, 16.067817, 15.805894, 14.808896],
+            'cell_rxpower_dbm': [-97.471778, -97.091597, -96.935187, -96.367609,
+                                 -97.472465, -97.093070, -96.954557, -96.363476,
+                                 -97.471482, -97.090963, -96.948206, -96.382279],
+            'relative_bearing': [265.527322, 244.459112, 156.340815, 102.488086,
+                                 265.760756, 244.227688, 156.506063, 102.524123,
+                                 265.427108, 244.558397, 155.742118, 102.355603],
+            'sinr_db':      [-7.221535, -6.765360, -7.348885, -6.646319,
+                             -7.222353, -6.767143, -7.350508, -6.641292,
+                             -7.221183, -6.764592, -7.342987, -6.664158],
+        }).astype({
+            'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float','tick': 'float', 
+            'cell_lat': 'float', 'cell_lon': 'float','cell_id': 'int','cell_az_deg': 'int',
+            'cell_carrier_freq_mhz': 'int','distance_km': 'float','cell_rxpower_dbm': 'float',
+            'relative_bearing': 'float', 'sinr_db': 'float'
+        })
+
+        # Generating results using the function to be tested
+        result = perform_attachment_hyst_ttt(data, hyst, ttt, rlf_threshold).astype({
+            'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+            'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'int', 'cell_az_deg': 'int',
+            'cell_carrier_freq_mhz': 'int', 'distance_km': 'float',
+            'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+            'sinr_db': 'float'
+        })
+        
+        # Espected result 
+        expected_result =  pd.DataFrame({
+            'ue_id' : [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            'loc_x' : [360.0, 360.0, 360.0, 360.0, 360.0, 360.0],
+            'loc_y' : [85.527322, -23.659185, 85.760756, -23.493397, 85.427108, -24.257882],
+            'tick' : [0.0, 0.0, 1.0, 1.0, 2.0, 2.0],
+            'cell_lat' : [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            'cell_lon' : [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            'cell_id' : [2, 2, 2, 2, 2, 2],
+            'cell_az_deg' : [120, 120, 120, 120, 120, 120],
+            'cell_carrier_freq_mhz' : [1500, 1500, 1500, 1500, 1500, 1500],
+            'distance_km' : [16.068990, 14.783906, 16.071715, 14.776874, 16.067817, 14.808896],
+            'cell_rxpower_dbm' : [-97.091597, -96.367609, -97.093070, -96.363476, -97.090963, -96.382279],
+            'relative_bearing' : [244.459112, 102.488086, 244.227688, 102.524123, 244.558397, 102.355603],
+            'sinr_db' : [-6.765360, -6.646319, -6.767143, -6.641292, -6.764592, -6.664158],     
+        }).astype({
+            'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+            'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'int', 'cell_az_deg': 'int',
+            'cell_carrier_freq_mhz': 'int', 'distance_km': 'float',
+            'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+            'sinr_db': 'float'
+        })
+        
+        pd.testing.assert_frame_equal(result.reset_index(drop = True), expected_result.reset_index(drop= True))   
+        
+    def test_perform_attachment_hyst_ttt_per_tick(self):
+        
+        hyst = 0.25
+        ttt = 3
+       
+        ue_data_for_current_tick = pd.DataFrame({
+            'ue_id' : [0.0, 0.0, 1.0, 1.0,],
+            'loc_x' : [360.0, 360.0, 360.0, 360.0],
+            'loc_y' : [85.427108, 85.427108, -24.257882, -24.257882],
+            'tick' : [2.0, 2.0, 2.0, 2.0],
+            'cell_lat' : [-90.0, 0.0, -90.0, 0.0],
+            'cell_lon' : [-180.0, 0.0, -180.0, 0.0],
+            'cell_id' : [1, 2, 1, 2],
+            'cell_az_deg' : [0, 120, 0, 120],
+            'cell_carrier_freq_mhz' : [1500, 1500, 1500, 1500],
+            'distance_km' : [16.787378, 16.067817, 15.805894, 14.808896],
+            'cell_rxpower_dbm' : [-97.471482, -97.090963, -96.948206, -96.382279],
+            'relative_bearing' : [265.427108, 244.558397, 155.742118, 102.355603],
+            'sinr_db' : [-7.221183, -6.764592, -7.342987, -6.664158],
+        }).astype({
+            'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+            'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'float', 'cell_az_deg': 'float',
+            'cell_carrier_freq_mhz': 'float', 'distance_km': 'float',
+            'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+            'sinr_db': 'float'
+        })
+        
+        strongest_server_history_tick_0 = pd.DataFrame({
+            'ue_id': [0.0, 1.0],
+            'loc_x': [360.0, 360.0],
+            'loc_y': [85.527322, -23.659185],
+            'tick' : [0.0, 0.0],
+            'cell_lat': [0.0, 0.0],
+            'cell_lon': [0.0, 0.0],
+            'cell_id': [2, 2],
+            'cell_az_deg': [120, 120],
+            'cell_carrier_freq_mhz': [1500, 1500],
+            'distance_km': [16.068990, 14.783906],
+            'cell_rxpower_dbm': [-97.091597, -96.367609],
+            'relative_bearing': [244.459112, 102.488086],
+            'sinr_db': [-6.765360, -6.646319]
+            }).astype({
+                'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+                'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'float', 'cell_az_deg': 'float',
+                'cell_carrier_freq_mhz': 'float', 'distance_km': 'float',
+                'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+                'sinr_db': 'float'
+            })
+            
+        strongest_server_history_tick_1 = pd.DataFrame({
+            'ue_id' : [0.0, 1.0],
+            'loc_x': [360.0, 360.0],
+            'loc_y': [85.760756, -23.493397],
+            'tick' : [1.0, 1.0],
+            'cell_lat' : [0.0, 0.0],
+            'cell_lon' : [0.0, 0.0],
+            'cell_id' : [2, 2],
+            'cell_az_deg' : [120, 120],
+            'cell_carrier_freq_mhz' : [1500, 1500],
+            'distance_km' : [16.071715, 14.776874],
+            'cell_rxpower_dbm' : [-97.093070, -96.363476],
+            'relative_bearing' : [244.227688, 102.524123],
+            'sinr_db' : [-6.767143, -6.641292]
+            }).astype({
+                'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+                'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'float', 'cell_az_deg': 'float',
+                'cell_carrier_freq_mhz': 'float', 'distance_km': 'float',
+                'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+                'sinr_db': 'float'
+            })
+            
+        strongest_server_history = [strongest_server_history_tick_0, strongest_server_history_tick_1]
+        
+        past_attachment = pd.DataFrame({
+            'ue_id': [0.0, 1.0],
+            'loc_x' : [360.0, 360.0],
+            'loc_y' : [85.760756, -23.493397],
+            'tick' : [1.0, 1.0],
+            'cell_lat' : [0.0, 0.0],
+            'cell_lon' : [0.0, 0.0],
+            'cell_id' : [2, 2],
+            'cell_az_deg' : [120, 120],
+            'cell_carrier_freq_mhz' : [1500, 1500],
+            'distance_km' : [16.071715, 14.776874],
+            'cell_rxpower_dbm' : [-97.093070, -96.363476],
+            'relative_bearing' : [244.227688, 102.524123],
+            'sinr_db' : [-6.767143, -6.641292]
+            }).astype({
+                'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+                'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'float', 'cell_az_deg': 'float',
+                'cell_carrier_freq_mhz': 'float', 'distance_km': 'float',
+                'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+                'sinr_db': 'float'
+            })
+
+     
+        # print(len(strongest_server_history)) 
+        actual_strongest_history, actual_current_attachment = _perform_attachment_hyst_ttt_per_tick(ue_data_for_current_tick, strongest_server_history, 
+                                                                                                   past_attachment, ttt, hyst, use_strongest_server = False,)
+        
+        # print(actual_strongest_history)
+        # print(actual_current_attachment)                
+
+        strongest_server_history_tick_2 = pd.DataFrame({
+            'ue_id' : [0.0, 1.0],
+            'loc_x' : [360.0, 360.0],
+            'loc_y' : [85.427108, -24.257882],
+            'tick' : [2.0, 2.0],
+            'cell_lat' : [0.0, 0.0],
+            'cell_lon' : [0.0, 0.0],
+            'cell_id' : [2, 2],
+            'cell_az_deg' : [120, 120],
+            'cell_carrier_freq_mhz' : [1500, 1500],
+            'distance_km' : [16.067817, 14.808896],
+            'cell_rxpower_dbm' : [-97.090963, -96.382279],
+            'relative_bearing' : [244.558397, 102.355603],
+            'sinr_db' : [-6.764592, -6.664158]
+        }).astype({
+            
+            'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+            'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'float', 'cell_az_deg': 'float',
+            'cell_carrier_freq_mhz': 'float', 'distance_km': 'float',
+            'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+            'sinr_db': 'float'
+        })
+        
+        expected_strongest_history = [strongest_server_history_tick_1, strongest_server_history_tick_2]
+        
+        expected_current_attachment = pd.DataFrame({
+            'ue_id' : [0.0, 1.0],
+            'loc_x' : [360.0, 360.0],
+            'loc_y' : [85.427108, -24.257882],
+            'tick' : [2.0, 2.0],
+            'cell_lat' : [0.0, 0.0],
+            'cell_lon' : [0.0, 0.0],
+            'cell_id' : [2, 2],
+            'cell_az_deg' : [120, 120],
+            'cell_carrier_freq_mhz' : [1500, 1500],
+            'distance_km' : [16.067817, 14.808896],
+            'cell_rxpower_dbm' : [-97.090963, -96.382279],
+            'relative_bearing' : [244.558397, 102.355603],
+            'sinr_db' : [-6.764592, -6.664158]
+        }).astype({
+            'ue_id': 'float', 'loc_x': 'float', 'loc_y': 'float', 'tick': 'float',
+            'cell_lat': 'float', 'cell_lon' : 'float', 'cell_id': 'float', 'cell_az_deg': 'float',
+            'cell_carrier_freq_mhz': 'float', 'distance_km': 'float',
+            'cell_rxpower_dbm': 'float', 'relative_bearing': 'float', 
+            'sinr_db': 'float'
+        })
+        
+        pd.testing.assert_frame_equal(actual_current_attachment.reset_index(drop = True), expected_current_attachment.reset_index(drop= True))  
+        for actual_df, expected_df in zip(actual_strongest_history, expected_strongest_history):
+            pd.testing.assert_frame_equal(actual_df.reset_index(drop=True), expected_df.reset_index(drop=True))
+
 if __name__ == "__main__":
     unittest.main()
