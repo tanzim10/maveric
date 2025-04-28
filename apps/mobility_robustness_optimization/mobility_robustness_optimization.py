@@ -103,26 +103,6 @@ class MobilityRobustnessOptimization:
 
         return NotImplemented  # Return NotImplemented on failure
 
-    def solve(self) -> Optional[Tuple[float]]:
-        """
-        Iteratively optimizes the cell attachment strategy to find the best MRO metric.
-        Currently, 'perform_attachment' has no parameters to optimize, so this function
-        will focus on evaluating its current implementation. This setup is ready to be
-        expanded for parameter optimization in future developments.
-        """
-        best_metric = None
-
-        # Example of a simple loop that could be adapted for parameter tuning
-        # Since perform_attachment has no parameters now, we simulate one configuration
-        # This loop can be adapted to iterate over parameter sets for perform_attachment
-        for _ in range(1):  # Single iteration for now, as there are no parameters to tune
-            mro_metric = self._calculate_metric()
-
-            # Initialize or update the best_metric
-            if best_metric is None or mro_metric > best_metric:
-                best_metric = mro_metric
-
-        return best_metric
     
     def _calculate_metric(self) -> float:
         """
