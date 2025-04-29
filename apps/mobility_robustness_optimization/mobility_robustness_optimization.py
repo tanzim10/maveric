@@ -66,7 +66,7 @@ class MobilityRobustnessOptimization(ABC):
                 print(
                     "No Bayesian Digital Twins available for update. Training from scratch."
                 )
-                self.training(maxiter=100, train_data=new_data)
+                self._training(maxiter=100, train_data=new_data)
         except TypeError as te:
             print(f"TypeError: {te}")
         except ValueError as ve:
