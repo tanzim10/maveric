@@ -442,55 +442,45 @@ class MobilityRobustnessOptimization(ABC):
 
 
 # Functions for MRO metrics and Handover events
-def count_handovers(df):
-    # Initialize counters for NS (Successful Handovers), NF (Radio Link Failures), and no change
-    ns_handover_count = 0
-    nf_handover_count = 0
-    no_change = 0
+def _count_handovers(df: pd.DataFrame) -> int:
+    """
+    Count the number of seemless cell handovers (cell to cell switches) for user equipment (UE) based
+    on cell_id changes between consecutive ticks, excluding switches to 'RLF'.
 
-    # Threshold for considering a Radio Link Failure (RLF)
-    rlf_threshold = -2.9
+    Parameters:
+        df (pd.DataFrame): DataFrame containing 'ue_id', 'cell_id', and 'tick' columns.
 
-    # Track the previous state for each UE
-    ue_previous_state = {}
+    +--------+---------+------+
+    | ue_id  | cell_id | tick |
+    +========+=========+======+
+    |   0    |    4    |  1   |
+    |   1    |    2    |  2   |
+    |   2    |    5    |  3   |
+    |   3    |    3    |  4   |
+    +--------+---------+------+
 
-    # Loop through the dataframe row by row
+    Returns:
+        int: Total number of valid cell switches across all UEs.
+    """
+    count = 0
+    df = df.sort_values(by=["ue_id", "tick"])  # Ensure correct order
+    prev_cells = {}
+    prev_ticks = {}
+
     for _, row in df.iterrows():
-        ue_id = row["ue_id"]
-        current_cell_id = row["cell_id"]
-        current_sinr_db = row["sinr_db"]
+        ue_id, cell_id, tick = row["ue_id"], row["cell_id"], row["tick"]
 
-        # Check if we have previous state for this UE
-        if ue_id in ue_previous_state:
-            previous_cell_id, previous_sinr_db = ue_previous_state[ue_id]
+        if (
+            ue_id in prev_cells
+            and prev_cells[ue_id] != cell_id
+            and prev_cells[ue_id] is not None
+        ):
+            if tick == prev_ticks[ue_id] + 1 and cell_id != "RLF":
+                count += 1
 
-            # Check for cell ID change
-            if previous_cell_id != current_cell_id:
-                # Check if the SINR is above the threshold after a cell change
-                if current_sinr_db >= rlf_threshold:
-                    ns_handover_count += 1  # Successful handover
-                else:
-                    nf_handover_count += 1  # Failed handover due to RLF after change
-            elif previous_sinr_db < rlf_threshold and current_sinr_db >= rlf_threshold:
-                ns_handover_count += (
-                    1  # Successful recovery from RLF without cell change
-                )
-            elif current_sinr_db < rlf_threshold:
-                nf_handover_count += 1  # Ongoing or new RLF
-            else:
-                no_change += 1  # No significant event
-
-        else:
-            # If first occurrence of UE has SINR below the RLF threshold, consider it as RLF
-            if current_sinr_db < rlf_threshold:
-                nf_handover_count += 1
-            else:
-                no_change += 1  # No significant event when UE first appears and SINR is above threshold
-
-        # Update the state for this UE
-        ue_previous_state[ue_id] = (current_cell_id, current_sinr_db)
-
-    return ns_handover_count, nf_handover_count, no_change
+        prev_cells[ue_id] = cell_id
+        prev_ticks[ue_id] = tick
+    return count
 
 
 def reattach_columns(predicted_df, full_prediction_df):
@@ -510,7 +500,26 @@ def reattach_columns(predicted_df, full_prediction_df):
     return merged_df
 
 
-def calculate_mro_metric(ns_handover_count, nf_handover_count, prediction_ue_data):
+def calculate_mro_metric(data: pd.DataFrame) -> float:
+
+    """
+    Calculated total operational cellular time remaining after loss due to cell handovers (including RLF)
+
+    Parameters:
+        data (pd.DataFrame): DataFrame containing UE data with a 'tick' column.
+
+    +--------+---------+------+
+    | ue_id  | cell_id | tick |
+    +========+=========+======+
+    |   0    |    4    |  1   |
+    |   1    |    2    |  2   |
+    |   2    |    5    |  3   |
+    |   3    |    3    |  4   |
+    +--------+---------+------+
+
+    Returns:
+        float: Effective operational score symbolizing time effectively after subtracting handover and RLF delays.
+    """
     # Constants for interruption times
     ts = 50 / 1000  # Convert ms to seconds
     t_nas = 1000 / 1000  # Convert ms to seconds
@@ -518,12 +527,38 @@ def calculate_mro_metric(ns_handover_count, nf_handover_count, prediction_ue_dat
     # Calculate total time (T) based on ticks; assuming each tick represents a uniform time slice
     # This could be adjusted if ticks represent variable time slices
     # Rather than passing the UE Data as whole we can send just an integar for tick
-    ticks = len(prediction_ue_data["tick"].unique())
+    ticks = len(data["tick"].unique())
     # Assuming each tick represents 50ms (this value may need to be adjusted based on actual data characteristics)
     tick_duration_seconds = 1  # 1 second per tick
     T = ticks * tick_duration_seconds
+
+    ns_handover_count = _count_handovers(
+        data
+    )  # Count of handovers to different cells (excluding RLF)
+    nf_handover_count = _count_rlf(data)  # Count of handovers to RLF
 
     # Calculate D
     D = T - (ns_handover_count * ts + nf_handover_count * t_nas)
 
     return D
+
+def _count_rlf(df: pd.DataFrame) -> int:
+    """
+    Counts the number of Radio Link Failures (RLF) by analyzing cell handovers onto RLF for UE
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing 'ue_id', 'cell_id', and 'tick' columns.
+
+    +--------+---------+------+
+    | ue_id  | cell_id | tick |
+    +========+=========+======+
+    |   0    |    4    |  1   |
+    |   1    |    2    |  2   |
+    |   2    |    5    |  3   |
+    |   3    |    3    |  4   |
+    +--------+---------+------+
+
+    Returns:
+        int: Total number of UE transitions to RLF cells.
+    """
+    return (df["cell_id"] == "RLF").sum()
