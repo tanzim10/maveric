@@ -133,7 +133,8 @@ class MobilityRobustnessOptimization(ABC):
         reattached_data = reattach_columns(predictions, full_prediction_df)
         
         # Count the number of successful and failed handovers
-        ns_handovers, nf_handovers, no_change = count_handovers(reattached_data)
+        ns_handovers= _count_handovers(reattached_data)
+        nf_handovers = _count_rlf(reattached_data)
 
         # Calculate and return the MRO Metric
         mro_metric = calculate_mro_metric(ns_handovers, nf_handovers, self.simulation_data)
