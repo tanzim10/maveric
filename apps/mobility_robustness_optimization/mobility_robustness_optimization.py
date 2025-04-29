@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 import pickle
@@ -15,7 +16,7 @@ from radp.digital_twin.utils.cell_selection import perform_attachment
 from notebooks.radp_library import get_ue_data
 
 
-class MobilityRobustnessOptimization:
+class MobilityRobustnessOptimization(ABC):
     """
     A class that contains a prototypical proof-of-concept of an `Mobility Robustness Optimization (MRO)` RIC xApp.
     """
@@ -103,6 +104,12 @@ class MobilityRobustnessOptimization:
 
         return NotImplemented  # Return NotImplemented on failure
 
+    @abstractmethod
+    def solve(self):
+        """
+        Solve the mobility robustness optimization problem.
+        """
+        print('simple solve called')
     
     def _calculate_metric(self) -> float:
         """
