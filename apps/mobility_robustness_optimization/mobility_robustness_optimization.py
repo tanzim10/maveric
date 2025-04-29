@@ -107,9 +107,11 @@ class MobilityRobustnessOptimization(ABC):
     @abstractmethod
     def solve(self):
         """
-        Solve the mobility robustness optimization problem.
+        Solve the mobility robustness optimization problem. 
+        
+        This method is an abstract method that must be implemented by its subclasses.
         """
-        print('simple solve called')
+        pass
     
     def _calculate_metric(self) -> float:
         """
