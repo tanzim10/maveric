@@ -41,8 +41,8 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         env = DummyVecEnv([lambda: ReinforcedMROEnv(df, RLF_THRESHOLD, hyst_range, ttt_range)])
 
         # PPO agent
-        model = PPO("MlpPolicy", env, verbose=1, n_steps=64, batch_size=64)
-        model.learn(total_timesteps=100)
+        model = PPO("MlpPolicy", env, verbose=2, n_steps=64, batch_size=64)
+        model.learn(total_timesteps=1000)
 
         # Predict optimal action using trained model
         obs = env.reset()
@@ -66,8 +66,8 @@ class ReinforcedMROEnv(Env):
 
         self.action_space = Box(low=np.array([hyst_range[0], ttt_range[0]]),
                                 high=np.array([hyst_range[1], ttt_range[1]]),
-                                dtype=np.float32)
-        self.observation_space = Box(low=0, high=1, shape=(1,), dtype=np.float32)
+                                dtype=np.float64)
+        self.observation_space = Box(low=0, high=1, shape=(1,), dtype=np.float64)
 
         self.state = np.array([0.0])
         self.current_step = 0
