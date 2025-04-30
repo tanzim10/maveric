@@ -4,7 +4,7 @@ from notebooks.radp_library import get_ue_data
 from radp.digital_twin.utils.constants import RLF_THRESHOLD
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.envs import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv
 from gym import Env
 from gym.spaces import Box
 import numpy as np
@@ -44,7 +44,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         ttt_range = [2, num_ticks + 1]
 
         # Create the RL environment
-        env = ReinforcedMRO(df, RLF_THRESHOLD, hyst_range, ttt_range)
+        env = ReinforcedMROEnv(df, RLF_THRESHOLD, hyst_range, ttt_range)
         env = DummyVecEnv([lambda: env])  # Vectorize the environment for stable-baselines3
 
         # Train the PPO agent
@@ -63,7 +63,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
 
 class ReinforcedMROEnv(Env):
     def __init__(self, df, rlf_threshold, hyst_range, ttt_range):
-        super(ReinforcedMRO, self).__init__()
+        super().__init__()
         self.df = df
         self.rlf_threshold = rlf_threshold
         self.hyst_range = hyst_range
