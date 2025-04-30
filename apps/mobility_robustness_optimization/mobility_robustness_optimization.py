@@ -13,8 +13,6 @@ from radp.digital_twin.rf.bayesian.bayesian_engine import (
 )
 from notebooks.radp_library import get_percell_data
 from radp.digital_twin.utils.cell_selection import perform_attachment
-from notebooks.radp_library import get_ue_data
-
 
 class MobilityRobustnessOptimization(ABC):
     """
@@ -112,34 +110,6 @@ class MobilityRobustnessOptimization(ABC):
         This method is an abstract method that must be implemented by its subclasses.
         """
         pass
-    
-    def _calculate_metric(self) -> float:
-        """
-        Conducts the process of generating user equipment (UE) data, making predictions,
-        and computing Mobility Robustness Optimization (MRO) metrics.
-        """
-        # Ensure Bayesian Digital Twins are trained before proceeding
-        if not self.bayesian_digital_twins:
-            raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
-        
-        # Generate and preprocess simulation data
-        self.simulation_data = get_ue_data(self.mobility_params)
-        self.simulation_data = self.simulation_data.rename(columns={"lat": "latitude", "lon": "longitude"})
-
-        # Predict power and perform attachment
-        predictions, full_prediction_df = self._predictions(self.simulation_data)
-
-        # Reattach columns to combine original simulation data with the predictions
-        reattached_data = reattach_columns(predictions, full_prediction_df)
-        
-        # Count the number of successful and failed handovers
-        ns_handovers= _count_handovers(reattached_data)
-        nf_handovers = _count_rlf(reattached_data)
-
-        # Calculate and return the MRO Metric
-        mro_metric = calculate_mro_metric(ns_handovers, nf_handovers, self.simulation_data)
-        return mro_metric
-
 
     def _training(self, maxiter: int, train_data: pd.DataFrame) -> List[float]:
         """
@@ -237,7 +207,6 @@ class MobilityRobustnessOptimization(ABC):
         ue_data_tmp["key"] = 1
         topology_tmp["key"] = 1
         combined_df = pd.merge(ue_data_tmp, topology_tmp, on="key").drop("key", axis=1)
-        print(combined_df)
         return combined_df
 
     def _calculate_received_power(
@@ -440,7 +409,72 @@ class MobilityRobustnessOptimization(ABC):
             axis=1,
         )
         return data
+    
+    def _preprocess_simulation_data(self,df) -> pd.DataFrame:
+        df.drop(columns=["rxpower_stddev_dbm","rxpower_dbm","cell_rxpwr_dbm"], inplace=True)
+        df.rename(columns={"mock_ue_id": "ue_id","log_distance": "distance_km","pred_means":"cell_rxpower_dbm"}, inplace=True)
+        self.topology["cell_id"] = self.topology["cell_id"].str.replace("cell_", "").astype(int)
+        df["cell_id"] = df["cell_id"].str.extract("(\d+)").astype(int)
+        df = self._add_sinr_column(df)
+        return df
 
+    def _add_sinr_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds a 'sinr_db' column to the input DataFrame, computing the Signal-to-Interference-plus-Noise Ratio (SINR)
+        for each UE–cell pair based on received signal power, background noise, and interference.
+
+        Parameters:
+            df (pd.DataFrame): DataFrame with 'ue_id', 'cell_rxpower_dbm', and 'cell_carrier_freq_mhz' per row.
+
+        Returns:
+            pd.DataFrame: Updated DataFrame with an additional 'sinr_db' column.
+        """
+        # Convert background noise from dB to linear scale
+        noise_linear = 10 ** (constants.LATENT_BACKGROUND_NOISE_DB / 10)
+
+        # Compute SINR for each row (UE–cell pair), given its group
+        def compute_row_level_sinr(row: pd.Series, group: pd.DataFrame) -> float: # where cell column? [DONE]
+            """
+            Computes the SINR for a single UE–cell pair by removing interference and noise from the received signal power.
+
+        Parameters:
+                row (pd.Series): Current row containing signal data.
+                group (pd.DataFrame): Group of UE–cell rows sharing the same UE and frequency.
+
+            +--------+---------+------------------+------------------------+
+            | ue_id  | cell_id | cell_rxpower_dbm | cell_carrier_freq_mhz |
+            +========+=========+==================+========================+
+            |   0    |    1    |   -100.311970    |         2100.0         |
+            |   0    |    2    |    -99.841523    |         2100.0         |
+            |   1    |    1    |   -100.294405    |         2100.0         |
+            |   1    |    2    |   -100.132420    |         2100.0         |
+            |   2    |    1    |   -100.650003    |         2100.0         |
+            |   2    |    2    |   -100.456381    |         2100.0         |
+            |   3    |    1    |   -100.987321    |         2100.0         |
+            |   3    |    2    |   -100.864529    |         2100.0         |
+            +--------+---------+------------------+------------------------+
+
+
+            Returns:
+                float: The computed SINR value in decibels for the current UE–cell pair.
+            """
+            signal_dbm = row["cell_rxpower_dbm"]
+
+            # Exclude the current row (serving cell) to compute interference
+            interference_linear = np.sum(10 ** (group.loc[group.index != row.name, "cell_rxpower_dbm"] / 10))
+            total_interference_plus_noise_linear = interference_linear + noise_linear
+
+            total_interference_plus_noise_dbm = 10 * np.log10(total_interference_plus_noise_linear)
+            sinr_db = signal_dbm - total_interference_plus_noise_dbm
+            return sinr_db
+
+        # Apply per UE and frequency
+        df = df.copy()
+        df["sinr_db"] = df.groupby(["ue_id", "cell_carrier_freq_mhz"]).apply(
+            lambda group: group.apply(lambda row: compute_row_level_sinr(row, group), axis=1)
+        ).reset_index(level=[0, 1], drop=True)
+
+        return df
 
 # Functions for MRO metrics and Handover events
 def _count_handovers(df: pd.DataFrame) -> int:
