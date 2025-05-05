@@ -11,7 +11,7 @@ from radp.digital_twin.rf.bayesian.bayesian_engine import (
     BayesianDigitalTwin,
     NormMethod,
 )
-from notebooks.radp_library import get_percell_data
+from notebooks.radp_library import get_percell_data, calculate_received_power
 from radp.digital_twin.utils.cell_selection import perform_attachment
 
 
@@ -22,24 +22,19 @@ class MobilityRobustnessOptimization(ABC):
 
     def __init__(
         self,
-        mobility_params: Dict[str, Dict],
+        mobility_model_params: Dict[str, Dict],
         topology: pd.DataFrame,
         bdt: Optional[Dict[str, BayesianDigitalTwin]] = None,
     ):
         self.topology = topology
-        self.tx_power_dbm = 23
         self.bayesian_digital_twins = bdt if bdt is not None else {}
-        self.mobility_params = mobility_params
+        self.mobility_model_params = mobility_model_params
         self.training_data = None
         self.prediction_data = None
         self.update_data = None
         self.simulation_data = None
 
-    def update(self, new_data: pd.DataFrame):
-        """
-        (Re-)train Bayesian Digital Twins for each cell.
-        TODO: Add expected := [lat, lon, cell_id, "rsrp_dbm"] and redefine the method.
-        """
+    def train_or_update_rf_twin(self, new_data: pd.DataFrame):
         try:
             if not isinstance(new_data, pd.DataFrame):
                 raise TypeError("The input 'new_data' must be a pandas DataFrame.")
@@ -212,22 +207,6 @@ class MobilityRobustnessOptimization(ABC):
         combined_df = pd.merge(ue_data_tmp, topology_tmp, on="key").drop("key", axis=1)
         return combined_df
 
-    def _calculate_received_power(
-        self, distance_km: float, frequency_mhz: int
-    ) -> float:
-        """
-        Calculate received power using the Free-Space Path Loss (FSPL) model.
-        """
-        # Convert distance from kilometers to meters
-        distance_m = distance_km * 1000
-
-        # Calculate Free-Space Path Loss (FSPL) in dB
-        fspl_db = 20 * np.log10(distance_m) + 20 * np.log10(frequency_mhz) - 27.55
-
-        # Calculate and return the received power in dBm
-        received_power_dbm = self.tx_power_dbm - fspl_db
-        return received_power_dbm
-
     def _preprocess_ue_topology_data(self) -> pd.DataFrame:
         full_data = self._prepare_all_UEs_from_all_cells_df()
         full_data["log_distance"] = full_data.apply(
@@ -238,7 +217,7 @@ class MobilityRobustnessOptimization(ABC):
         )
 
         full_data["cell_rxpwr_dbm"] = full_data.apply(
-            lambda row: self._calculate_received_power(
+            lambda row: calculate_received_power(
                 row["log_distance"], row["cell_carrier_freq_mhz"]
             ),
             axis=1,
@@ -246,7 +225,6 @@ class MobilityRobustnessOptimization(ABC):
 
         return full_data
 
-    # Change the type hint from pd.Dataframe to Dict for _preprocess_ue_training_data and _preprocess_ue_update_data
     def _preprocess_ue_training_data(self) -> pd.DataFrame:
         data = self._preprocess_ue_topology_data()
         train_per_cell_df = [x for _, x in data.groupby("cell_id")]
@@ -320,7 +298,7 @@ class MobilityRobustnessOptimization(ABC):
         )
 
         data["cell_rxpwr_dbm"] = data.apply(
-            lambda row: self._calculate_received_power(
+            lambda row: calculate_received_power(
                 row["log_distance"], row["cell_carrier_freq_mhz"]
             ),
             axis=1,
@@ -395,7 +373,7 @@ class MobilityRobustnessOptimization(ABC):
             axis=1,
         )
         data["cell_rxpwr_dbm"] = data.apply(
-            lambda row: self._calculate_received_power(
+            lambda row: calculate_received_power(
                 row["log_distance"], row["cell_carrier_freq_mhz"]
             ),
             axis=1,

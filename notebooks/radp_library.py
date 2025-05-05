@@ -28,6 +28,7 @@ from radp.digital_twin.rf.bayesian.bayesian_engine import (
 from radp.digital_twin.utils.gis_tools import GISTools
 from radp.digital_twin.mobility.ue_tracks import UETracksGenerator
 from radp.digital_twin.mobility.ue_tracks_params import UETracksGenerationParams
+from radp.digital_twin.utils.constants import TXPWR_DBM
 
 
 Boundary = Union[geometry.Polygon, geometry.MultiPolygon]
@@ -998,6 +999,21 @@ def get_ue_data(params: dict) -> pd.DataFrame:
     return ue_tracks_generation
 
 
+def calculate_received_power(distance_km: float, frequency_mhz: int) -> float:
+    """
+    Calculate received power using the Free-Space Path Loss (FSPL) model.
+    """
+    # Convert distance from kilometers to meters
+    distance_m = distance_km * 1000
+
+    # Calculate Free-Space Path Loss (FSPL) in dB
+    fspl_db = 20 * np.log10(distance_m) + 20 * np.log10(frequency_mhz) - 27.55
+
+    # Calculate and return the received power in dBm
+    received_power_dbm = TXPWR_DBM - fspl_db
+    return received_power_dbm
+
+
 def plot_ue_tracks(df: pd.DataFrame) -> None:
     """
     Plots the movement tracks of unique UE IDs on a grid of subplots.
@@ -1134,9 +1150,11 @@ def plot_ue_tracks_on_axis(df: pd.DataFrame, ax, title: str) -> None:
     ax.set_title(title)
     ax.legend()
 
-#MRO app helper functions
+
+# MRO app helper functions
 
 # Scatter plot of the Cell towers and UE Locations
+
 
 def mro_plot_scatter(df, topology):
     # Create a figure and axis

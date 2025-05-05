@@ -67,7 +67,7 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
             {"ue_id": [0, 1], "tick": [0, 1], "loc_x": [5.0, 10.0], "loc_y": [0.0, 1.0]}
         )
 
-        self.mobility_params = {
+        self.mobility_model_params = {
             "param1": {"value": 10, "type": "int"},
             "param2": {"value": 20, "type": "float"},
         }
@@ -77,21 +77,23 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
 
         # Instantiate MRO object
         self.mro = SimpleMRO(
-            self.mobility_params, self.dummy_topology, bdt={"cell_001": self.mock_bdt}
+            self.mobility_model_params,
+            self.dummy_topology,
+            bdt={"cell_001": self.mock_bdt},
         )
         self.mro.training_data = self.training_data
         self.mro.prediction_data = self.prediction_data
         self.mro.update_data = self.update_data
         self.mro.simulation_data = self.simulation_data
 
-    def test_update(self):  # TODO: Implement AFTER PR
+    def test_train_or_update_rf_twin(self):  # TODO: Implement AFTER PR
         pass
 
     def test_solve(self):  # TODO: Implement AFTER PR
         pass
 
     def test_training(self):
-        mro = SimpleMRO(mobility_params={}, topology=self.dummy_topology)
+        mro = SimpleMRO(mobility_model_params={}, topology=self.dummy_topology)
         train_data = self.training_data.copy()
         train_data.rename(
             columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
@@ -105,7 +107,7 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
 
     def test_predictions(self):
         # without _training() --> model not available --> empty df response
-        mro = SimpleMRO(mobility_params={}, topology=self.dummy_topology)
+        mro = SimpleMRO(mobility_model_params={}, topology=self.dummy_topology)
         prediction_data = self.prediction_data.copy()
         mro.prediction_data = prediction_data.rename(
             columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
@@ -117,7 +119,9 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         # with _training()
         topology = self.dummy_topology.copy()
         topology["cell_id"] = ["cell_1", "cell_2"]
-        mro = SimpleMRO(mobility_params=self.mobility_params, topology=topology)
+        mro = SimpleMRO(
+            mobility_model_params=self.mobility_model_params, topology=topology
+        )
         train_data = self.training_data.copy()
         train_data.rename(
             columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
@@ -134,15 +138,6 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
     def test_prepare_all_UEs_from_all_cells_df(self):
         result = self.mro._prepare_all_UEs_from_all_cells_df()
         self.assertEqual(result.shape[0], 2 * 2)  # 2 UEs x 2 cells
-
-    def test_calculate_received_power(self):
-        dummy_distance = 1
-        dummy_freq = 1800
-        expected_power = -74.55545010206612
-        power = self.mro._calculate_received_power(
-            distance_km=dummy_distance, frequency_mhz=dummy_freq
-        )
-        self.assertEqual(expected_power, power)
 
     def test_preprocess_ue_topology_data(self):
         result = self.mro._prepare_all_UEs_from_all_cells_df()

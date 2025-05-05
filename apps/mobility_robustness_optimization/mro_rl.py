@@ -34,7 +34,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
             )
 
         # Load and prepare simulation data
-        self.simulation_data = get_ue_data(self.mobility_params)
+        self.simulation_data = get_ue_data(self.mobility_model_params)
         self.simulation_data = self.simulation_data.rename(
             columns={"lat": "latitude", "lon": "longitude"}
         )
