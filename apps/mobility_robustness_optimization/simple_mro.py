@@ -41,6 +41,9 @@ class SimpleMRO(MobilityRobustnessOptimization):
         self.simulation_data = self.simulation_data.rename(
             columns={"lat": "latitude", "lon": "longitude"}
         )
+        # Make a last minute patch to fix the topology format
+        if self.topology["cell_id"].dtype == int:
+            self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
 
         # Predict power and perform attachment
         predictions, full_prediction_df = self._predictions(self.simulation_data)

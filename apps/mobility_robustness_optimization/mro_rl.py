@@ -38,6 +38,10 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         self.simulation_data = self.simulation_data.rename(
             columns={"lat": "latitude", "lon": "longitude"}
         )
+
+        if self.topology["cell_id"].dtype == int:
+            self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
+
         predictions, full_prediction_df = self._predictions(self.simulation_data)
         df = self._preprocess_simulation_data(full_prediction_df)
 
