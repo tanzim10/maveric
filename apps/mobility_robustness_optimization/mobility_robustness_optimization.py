@@ -11,7 +11,7 @@ from radp.digital_twin.rf.bayesian.bayesian_engine import (
     BayesianDigitalTwin,
     NormMethod,
 )
-from notebooks.radp_library import get_percell_data, calculate_received_power
+from notebooks.radp_library import get_percell_data, calculate_received_power, calc_log_distance, calc_relative_bearing
 from radp.digital_twin.utils.cell_selection import perform_attachment
 
 
@@ -39,7 +39,7 @@ class MobilityRobustnessOptimization(ABC):
             if not isinstance(new_data, pd.DataFrame):
                 raise TypeError("The input 'new_data' must be a pandas DataFrame.")
 
-            expected_columns = {"mock_ue_id", "longitude", "latitude", "tick"}
+            expected_columns = {"longitude", "latitude", "cell_lat", "cell_lon", "cell_id", "cell_az_deg", "cell_carrier_freq_mhz", "cell_rxpwr_dbm"}
             if not expected_columns.issubset(new_data.columns):
                 raise ValueError(
                     f"The input DataFrame must contain the following columns: {expected_columns}"
@@ -47,20 +47,26 @@ class MobilityRobustnessOptimization(ABC):
 
             if self.bayesian_digital_twins:
                 self.update_data = new_data
-                updated_data = self._preprocess_ue_update_data()
-                updated_data_list = list(updated_data.values())
+                self.update_data = calc_log_distance(self.update_data)
+                self.update_data = calc_relative_bearing(self.update_data)
+                
+                # TODO: Add Update Logic Here
+                # self.update_data = new_data
+                # updated_data = self._preprocess_ue_update_data()
+                # updated_data_list = list(updated_data.values())
 
-                for data_idx, update_data_df in enumerate(updated_data_list):
-                    update_cell_id = data_idx + 1
-                    if update_cell_id in self.bayesian_digital_twins:
-                        self.bayesian_digital_twins[
-                            update_cell_id
-                        ].update_trained_gpmodel([update_data_df])
+                # for data_idx, update_data_df in enumerate(updated_data_list):
+                #     update_cell_id = data_idx + 1
+                #     if update_cell_id in self.bayesian_digital_twins:
+                #         self.bayesian_digital_twins[
+                #             update_cell_id
+                #         ].update_trained_gpmodel([update_data_df])
             else:
                 print(
                     "No Bayesian Digital Twins available for update. Training from scratch."
                 )
-                self._training(maxiter=100, train_data=new_data)
+                # TODO: Add Training From Scratch Logic
+                # self._training(maxiter=100, train_data=new_data)
         except TypeError as te:
             print(f"TypeError: {te}")
         except ValueError as ve:
