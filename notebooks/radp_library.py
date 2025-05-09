@@ -1201,3 +1201,49 @@ def mro_plot_scatter(df, topology):
 
     # Show the plot
     plt.show()
+
+def get_ues_cells_cartesian_df(data,topology):
+    if topology["cell_id"].dtype == object:
+            topology["cell_id"] = (
+                topology["cell_id"].str.replace("cell_", "").astype(int)
+            )
+    data["key"] = 1
+    topology["key"] = 1
+    combined_df = pd.merge(data, topology, on="key").drop("key", axis=1)
+    return combined_df
+
+def calc_log_distance(cartesian_df):
+    cartesian_df["log_distance"] = cartesian_df.apply(
+        lambda row: GISTools.get_log_distance(
+            row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]
+        ),
+        axis=1,
+    )
+    return cartesian_df
+
+def calc_rx_power(cartesian_df):
+    cartesian_df["cell_rxpwr_dbm"] = cartesian_df.apply(
+        lambda row: calculate_received_power(
+            row["log_distance"], row["cell_carrier_freq_mhz"]
+        ),
+        axis=1,
+    )
+    return cartesian_df
+
+def calc_relative_bearing(cartesian_df):
+    cartesian_df["relative_bearing"] = cartesian_df.apply(
+        lambda row: GISTools.get_relative_bearing(
+            row["cell_az_deg"],
+            row["cell_lat"],
+            row["cell_lon"],
+            row["latitude"],
+            row["longitude"],
+        ),
+        axis=1,
+    )
+    return cartesian_df
+
+def preprocess_ue_data(data, topology):
+    cartesian_df = get_ues_cells_cartesian_df(data, topology)
+    cartesian_df = calc_log_distance(cartesian_df)
+    return calc_rx_power(cartesian_df)
