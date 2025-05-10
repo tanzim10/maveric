@@ -36,6 +36,26 @@ class MobilityRobustnessOptimization(ABC):
         self.simulation_data = None
 
     def train_or_update_rf_twin(self, new_data: pd.DataFrame):
+        """
+        Updates the Bayesian Digital Twins with new observations if they exist.
+        If not, it trains new twins from scratch.
+
+        Parameters:
+            new_data (pd.DataFrame): UE data with rx power data in cartesian (UEs x Cells) format.
+            The DataFrame should contain ['longitude', 'latitude', 'cell_id', 'cell_rxpwr_dbm'] columns.
+
+            +-----------+-----------+-----------+-----------------+
+            | longitude | latitude  | cell_id   | cell_rxpwr_dbm  |
+            +===========+===========+===========+=================+
+            | 1.0       | 2.0       | cell_1    |  ...            |
+            | 1.0       | 2.0       | cell_2    |  ...            |
+            | 1.0       | 2.0       | cell_3    |  ...            |
+            | 3.0       | 4.0       | cell_1    |  ...            |
+            | 3.0       | 4.0       | cell_2    |  ...            |
+            | 3.0       | 4.0       | cell_3    |  ...            |
+            +-----------+-----------+-----------+-----------------+
+
+        """
         try:
             if not isinstance(new_data, pd.DataFrame):
                 raise TypeError("The input 'new_data' must be a pandas DataFrame.")
@@ -153,7 +173,9 @@ class MobilityRobustnessOptimization(ABC):
         return loss_vs_iters
 
     def _prepare_train_or_update_data(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-        """Returnd key value pairs of cell_id and processed DataFrame for each cell_id."""
+        """
+        Returnd key value pairs of cell_id and processed DataFrame for each cell_id.
+        """
         required_columns = {"cell_lat", "cell_lon", "cell_az_deg"}
         if not required_columns.issubset(df.columns):
             df = self.add_cell_info(df, self.topology)
