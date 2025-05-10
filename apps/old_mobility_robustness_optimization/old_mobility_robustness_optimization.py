@@ -52,7 +52,7 @@ class MobilityRobustnessOptimization(ABC):
 
                 for data_idx, update_data_df in enumerate(updated_data_list):
                     update_cell_id = data_idx + 1
-                    print(f"{update_cell_id}\n{update_data_df.dtypes}\n\n{update_data_df}")
+
                     if update_cell_id in self.bayesian_digital_twins:
                         self.bayesian_digital_twins[
                             update_cell_id

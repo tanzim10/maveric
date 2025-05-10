@@ -5,6 +5,9 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from gpytorch.settings import cholesky_jitter
+from gpytorch.kernels import ScaleKernel, RBFKernel
+from gpytorch.likelihoods import GaussianLikelihood
 
 from notebooks.radp_library import calc_log_distance, calc_relative_bearing, calculate_received_power, get_percell_data
 from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin, NormMethod
@@ -37,17 +40,16 @@ class MobilityRobustnessOptimization(ABC):
             if not isinstance(new_data, pd.DataFrame):
                 raise TypeError("The input 'new_data' must be a pandas DataFrame.")
 
-            # TODO: write a function to check if the data is in cartesian format or not
-
             expected_columns = {"longitude", "latitude", "cell_id", "cell_rxpwr_dbm"}
             if not expected_columns.issubset(new_data.columns):
-                raise ValueError(f"The input DataFrame must contain the following columns: {expected_columns}")
+                raise ValueError(
+                    f"The input DataFrame must contain the following columns: {expected_columns}"
+                )
 
-            # TODO: add comment to explain the purpose of converting the cell_id to string
-
+            # Ensure string cell IDs match topology
             if self.topology["cell_id"].dtype == int:
                 self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{x}")
-            if self.topology["cell_id"].dtype == int:
+            if new_data["cell_id"].dtype == int:
                 new_data["cell_id"] = new_data["cell_id"].apply(lambda x: f"cell_{x}")
 
             prepared_data = self._prepare_train_or_update_data(new_data)
@@ -55,10 +57,31 @@ class MobilityRobustnessOptimization(ABC):
             if self.bayesian_digital_twins:
                 print("Updating existing Bayesian Digital Twins with new data.")
 
-                for update_cell_id, update_data_df in prepared_data.items():
-                    if update_cell_id in self.bayesian_digital_twins:
-                        print(f"{update_cell_id}\n{update_data_df.dtypes}\n\n{update_data_df}")
-                        self.bayesian_digital_twins[update_cell_id].update_trained_gpmodel([update_data_df])
+                for cell_id, df in prepared_data.items():
+                    # Remove near-duplicates in feature space
+                    df = df.drop_duplicates(subset=["log_distance", "relative_bearing"])
+
+                    # Subsample to at most 300 strongest samples per cell
+                    if df.shape[0] > 300:
+                        df = get_percell_data(
+                            data_in=df,
+                            choose_strongest_samples_percell=True,
+                            n_samples=300,
+                        )[0][0]
+
+                    twin = self.bayesian_digital_twins[cell_id]
+                    # Reconfigure the kernel to include scale + RBF
+                    twin.model.covar_module = ScaleKernel(RBFKernel())
+
+                    # Increase observation noise via GaussianLikelihood
+                    if not hasattr(twin, 'likelihood'):
+                        twin.likelihood = GaussianLikelihood()
+                    twin.likelihood.noise = 1e-2
+
+                    # Use an increased jitter context
+                    with cholesky_jitter(1e-1):
+                        twin.update_trained_gpmodel([df])
+
             else:
                 print("No Bayesian Digital Twins available for update. Training from scratch.")
                 self._training(maxiter=100, train_data=prepared_data)
@@ -116,7 +139,6 @@ class MobilityRobustnessOptimization(ABC):
         bayesian_digital_twins = {}
         loss_vs_iters = []
         for train_cell_id, training_data_idx in training_data.items():
-            print(f"{train_cell_id}\n{training_data_idx.dtypes}\n\n{training_data_idx}")
             bayesian_digital_twins[train_cell_id] = BayesianDigitalTwin(
                 data_in=[training_data_idx],
                 x_columns=["log_distance", "relative_bearing"],
@@ -139,7 +161,7 @@ class MobilityRobustnessOptimization(ABC):
         self.update_data = calc_log_distance(df)
         self.update_data = calc_relative_bearing(self.update_data)
 
-        # self.update_data = self.update_data.loc[:, ["cell_id", "log_distance", "relative_bearing", "cell_rxpwr_dbm"]]
+        self.update_data = self.update_data.loc[:, ["cell_id", "log_distance", "relative_bearing", "cell_rxpwr_dbm"]]
 
         train_per_cell_df = [x for _, x in self.update_data.groupby("cell_id")]
         n_cell = len(self.topology.index)
