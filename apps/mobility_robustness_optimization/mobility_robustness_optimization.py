@@ -44,12 +44,14 @@ class MobilityRobustnessOptimization(ABC):
                 raise ValueError(
                     f"The input DataFrame must contain the following columns: {expected_columns}"
                 )
+            new_data["cell_id"] = new_data["cell_id"].apply(lambda x: f"cell_{x}")
+            self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{x}")
+            prepared_data = self._prepare_train_or_update_data(new_data)
 
             if self.bayesian_digital_twins:
-                self.update_data = new_data
-                self.update_data = calc_log_distance(self.update_data)
-                self.update_data = calc_relative_bearing(self.update_data)
-                
+                print(
+                    "Updating existing Bayesian Digital Twins with new data."
+                )
                 # TODO: Add Update Logic Here
                 # self.update_data = new_data
                 # updated_data = self._preprocess_ue_update_data()
@@ -65,6 +67,8 @@ class MobilityRobustnessOptimization(ABC):
                 print(
                     "No Bayesian Digital Twins available for update. Training from scratch."
                 )
+                self._training(maxiter=100, train_data=prepared_data)
+
                 # TODO: Add Training From Scratch Logic
                 # self._training(maxiter=100, train_data=new_data)
         except TypeError as te:
@@ -104,8 +108,6 @@ class MobilityRobustnessOptimization(ABC):
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
 
-        return NotImplemented  # Return NotImplemented on failure
-
     @abstractmethod
     def solve(self):
         """
@@ -120,8 +122,7 @@ class MobilityRobustnessOptimization(ABC):
         Trains the Bayesian Digital Twins for each cell in the topology using the UE locations and features
         like log distance, relative bearing, and cell received power (Rx power).
         """
-        self.training_data = train_data
-        training_data = self._preprocess_ue_training_data()
+        training_data = train_data
         bayesian_digital_twins = {}
         loss_vs_iters = []
         for train_cell_id, training_data_idx in training_data.items():
@@ -140,6 +141,45 @@ class MobilityRobustnessOptimization(ABC):
                 )
             )
         return loss_vs_iters
+    
+    def _prepare_train_or_update_data(self, df):
+        self.update_data = calc_log_distance(df)
+        self.update_data = calc_relative_bearing(self.update_data)
+        self.update_data.drop(columns=['longitude', 'latitude','cell_lat','cell_lon', 'cell_az_deg','cell_carrier_freq_mhz'], inplace=True)
+
+        train_per_cell_df = [x for _, x in self.update_data.groupby("cell_id")]
+        n_cell = len(self.topology.index)
+
+        metadata_df = pd.DataFrame(
+            {
+                "cell_id": [cell_id for cell_id in self.topology.cell_id],
+                "idx": [i + 1 for i in range(n_cell)],
+            }
+        )
+        
+        idx_cell_id_mapping = dict(zip(metadata_df.idx, metadata_df.cell_id))
+        n_samples_train = []
+        
+        for df in train_per_cell_df:
+            n_samples_train.append(df.shape[0])
+
+        train_per_cell_df_processed = []
+        for i in range(n_cell):
+            train_per_cell_df_processed.append(
+                get_percell_data(
+                    data_in=train_per_cell_df[i],
+                    choose_strongest_samples_percell=False,
+                    n_samples=n_samples_train[i],
+                )[0][0]
+            )
+
+        training_data = {}
+
+        for i, df in enumerate(train_per_cell_df_processed):
+            train_cell_id = idx_cell_id_mapping[i + 1]
+            training_data[train_cell_id] = df
+        
+        return training_data
 
     def _predictions(self, pred_data) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
