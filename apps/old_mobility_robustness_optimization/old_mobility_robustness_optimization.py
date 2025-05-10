@@ -1,16 +1,18 @@
-import os
-import pickle
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
-
-import numpy as np
 import pandas as pd
+import numpy as np
+import pickle
+import os
+from typing import Any, Dict, List, Tuple, Optional
 
-from notebooks.radp_library import calc_log_distance, calc_relative_bearing, calculate_received_power, get_percell_data
-from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin, NormMethod
 from radp.digital_twin.utils import constants
-from radp.digital_twin.utils.cell_selection import perform_attachment
 from radp.digital_twin.utils.gis_tools import GISTools
+from radp.digital_twin.rf.bayesian.bayesian_engine import (
+    BayesianDigitalTwin,
+    NormMethod,
+)
+from notebooks.radp_library import get_percell_data, calculate_received_power
+from radp.digital_twin.utils.cell_selection import perform_attachment
 
 
 class MobilityRobustnessOptimization(ABC):
@@ -37,32 +39,29 @@ class MobilityRobustnessOptimization(ABC):
             if not isinstance(new_data, pd.DataFrame):
                 raise TypeError("The input 'new_data' must be a pandas DataFrame.")
 
-            # TODO: write a function to check if the data is in cartesian format or not
-
-            expected_columns = {"longitude", "latitude", "cell_id", "cell_rxpwr_dbm"}
+            expected_columns = {"mock_ue_id", "longitude", "latitude", "tick"}
             if not expected_columns.issubset(new_data.columns):
-                raise ValueError(f"The input DataFrame must contain the following columns: {expected_columns}")
-
-            # TODO: add comment to explain the purpose of converting the cell_id to string
-
-            if self.topology["cell_id"].dtype == int:
-                self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{x}")
-            if self.topology["cell_id"].dtype == int:
-                new_data["cell_id"] = new_data["cell_id"].apply(lambda x: f"cell_{x}")
-
-            prepared_data = self._prepare_train_or_update_data(new_data)
+                raise ValueError(
+                    f"The input DataFrame must contain the following columns: {expected_columns}"
+                )
 
             if self.bayesian_digital_twins:
-                print("Updating existing Bayesian Digital Twins with new data.")
+                self.update_data = new_data
+                updated_data = self._preprocess_ue_update_data()
+                updated_data_list = list(updated_data.values())
 
-                for update_cell_id, update_data_df in prepared_data.items():
+                for data_idx, update_data_df in enumerate(updated_data_list):
+                    update_cell_id = data_idx + 1
+                    print(f"{update_cell_id}\n{update_data_df.dtypes}\n\n{update_data_df}")
                     if update_cell_id in self.bayesian_digital_twins:
-                        print(f"{update_cell_id}\n{update_data_df.dtypes}\n\n{update_data_df}")
-                        self.bayesian_digital_twins[update_cell_id].update_trained_gpmodel([update_data_df])
+                        self.bayesian_digital_twins[
+                            update_cell_id
+                        ].update_trained_gpmodel([update_data_df])
             else:
-                print("No Bayesian Digital Twins available for update. Training from scratch.")
-                self._training(maxiter=100, train_data=prepared_data)
-
+                print(
+                    "No Bayesian Digital Twins available for update. Training from scratch."
+                )
+                self._training(maxiter=100, train_data=new_data)
         except TypeError as te:
             print(f"TypeError: {te}")
         except ValueError as ve:
@@ -81,7 +80,9 @@ class MobilityRobustnessOptimization(ABC):
         filename = f"{file_loc}/digital_twins.pkl"
         try:
             if not isinstance(bayesian_digital_twins, dict):
-                raise TypeError("The input 'bayesian_digital_twins' must be a dictionary.")
+                raise TypeError(
+                    "The input 'bayesian_digital_twins' must be a dictionary."
+                )
 
             # Ensure the directory exists
             os.makedirs(file_loc, exist_ok=True)
@@ -98,6 +99,8 @@ class MobilityRobustnessOptimization(ABC):
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
 
+        return NotImplemented  # Return NotImplemented on failure
+
     @abstractmethod
     def solve(self):
         """
@@ -112,7 +115,8 @@ class MobilityRobustnessOptimization(ABC):
         Trains the Bayesian Digital Twins for each cell in the topology using the UE locations and features
         like log distance, relative bearing, and cell received power (Rx power).
         """
-        training_data = train_data
+        self.training_data = train_data
+        training_data = self._preprocess_ue_training_data()
         bayesian_digital_twins = {}
         loss_vs_iters = []
         for train_cell_id, training_data_idx in training_data.items():
@@ -123,7 +127,9 @@ class MobilityRobustnessOptimization(ABC):
                 y_columns=["cell_rxpwr_dbm"],
                 norm_method=NormMethod.MINMAX,
             )
-            self.bayesian_digital_twins[train_cell_id] = bayesian_digital_twins[train_cell_id]
+            self.bayesian_digital_twins[train_cell_id] = bayesian_digital_twins[
+                train_cell_id
+            ]
             loss_vs_iters.append(
                 bayesian_digital_twins[train_cell_id].train_distributed_gpmodel(
                     maxiter=maxiter,
@@ -131,71 +137,9 @@ class MobilityRobustnessOptimization(ABC):
             )
         return loss_vs_iters
 
-    def _prepare_train_or_update_data(self, df):
-        required_columns = {"cell_lat", "cell_lon", "cell_az_deg"}
-        if not required_columns.issubset(df.columns):
-            df = self.add_cell_info(df, self.topology)
-
-        self.update_data = calc_log_distance(df)
-        self.update_data = calc_relative_bearing(self.update_data)
-
-        # self.update_data = self.update_data.loc[:, ["cell_id", "log_distance", "relative_bearing", "cell_rxpwr_dbm"]]
-
-        train_per_cell_df = [x for _, x in self.update_data.groupby("cell_id")]
-        n_cell = len(self.topology.index)
-
-        metadata_df = pd.DataFrame(
-            {
-                "cell_id": [cell_id for cell_id in self.topology.cell_id],
-                "idx": [i + 1 for i in range(n_cell)],
-            }
-        )
-
-        idx_cell_id_mapping = dict(zip(metadata_df.idx, metadata_df.cell_id))
-        n_samples_train = []
-
-        for df in train_per_cell_df:
-            n_samples_train.append(df.shape[0])
-
-        train_per_cell_df_processed = []
-        for i in range(n_cell):
-            train_per_cell_df_processed.append(
-                get_percell_data(
-                    data_in=train_per_cell_df[i],
-                    choose_strongest_samples_percell=False,
-                    n_samples=n_samples_train[i],
-                )[0][0]
-            )
-
-        training_data = {}
-
-        for i, df in enumerate(train_per_cell_df_processed):
-            train_cell_id = idx_cell_id_mapping[i + 1]
-            training_data[train_cell_id] = df
-
-        return training_data
-
-    def add_cell_info(self, new_data_with_rx_data, topology):
-        """
-        Adds cell information ['cell_id', 'cell_lat', 'cell_lon', 'cell_az_deg']
-        to the DataFrame based on cell_id.
-        Converts integer cell_id to string format like 'cell_1' to match topology.
-        """
-        # Convert int to str format matching topology: 'cell_1', 'cell_2', etc.
-        if new_data_with_rx_data["cell_id"].dtype == int:
-            new_data_with_rx_data["cell_id"] = new_data_with_rx_data["cell_id"].apply(lambda x: f"cell_{x}")
-
-        # Merge using consistent cell_id format
-        new_data_topology_merged = new_data_with_rx_data.merge(
-            topology[["cell_id", "cell_lat", "cell_lon", "cell_az_deg"]], on="cell_id", how="left"
-        )
-
-        return new_data_topology_merged
-
     def _predictions(self, pred_data) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Predicts the received power for each User Equipment (UE) at different locations
-        and ticks using Bayesian Digital Twins.
+        Predicts the received power for each User Equipment (UE) at different locations and ticks using Bayesian Digital Twins.
         It then determines the best cell for each UE to attach based on the predicted power values.
         """
         self.prediction_data = pred_data
@@ -210,9 +154,9 @@ class MobilityRobustnessOptimization(ABC):
                 # Check if the Bayesian model for this cell_id exists
                 if cell_id in self.bayesian_digital_twins:
                     # Perform the Bayesian prediction
-                    pred_means_percell, _ = self.bayesian_digital_twins[cell_id].predict_distributed_gpmodel(
-                        prediction_dfs=[cell_df]
-                    )
+                    pred_means_percell, _ = self.bayesian_digital_twins[
+                        cell_id
+                    ].predict_distributed_gpmodel(prediction_dfs=[cell_df])
 
                     # Assuming 'pred_means_percell' returns a list of predictions corresponding to the DataFrame index
                     cell_df["pred_means"] = pred_means_percell[0]
@@ -222,12 +166,18 @@ class MobilityRobustnessOptimization(ABC):
                     cell_df["cell_id"] = cell_id
 
                     # Append the predictions to the full DataFrame
-                    full_prediction_df = pd.concat([full_prediction_df, cell_df], ignore_index=True)
+                    full_prediction_df = pd.concat(
+                        [full_prediction_df, cell_df], ignore_index=True
+                    )
                 else:
                     # Handle missing models, e.g., log a warning or initialize a default model
-                    print(f"No model available for cell_id {cell_id}, skipping prediction.")
+                    print(
+                        f"No model available for cell_id {cell_id}, skipping prediction."
+                    )
 
-        full_prediction_df = full_prediction_df.rename(columns={"latitude": "loc_y", "longitude": "loc_x"})
+        full_prediction_df = full_prediction_df.rename(
+            columns={"latitude": "loc_y", "longitude": "loc_x"}
+        )
         predicted = perform_attachment(full_prediction_df, self.topology)
 
         return predicted, full_prediction_df
@@ -251,7 +201,9 @@ class MobilityRobustnessOptimization(ABC):
         topology_tmp = self.topology.copy()
         # Remove the 'cell_' prefix and convert cell_id to integer if needed
         if topology_tmp["cell_id"].dtype == object:
-            topology_tmp["cell_id"] = topology_tmp["cell_id"].str.replace("cell_", "").astype(int)
+            topology_tmp["cell_id"] = (
+                topology_tmp["cell_id"].str.replace("cell_", "").astype(int)
+            )
         ue_data_tmp["key"] = 1
         topology_tmp["key"] = 1
         combined_df = pd.merge(ue_data_tmp, topology_tmp, on="key").drop("key", axis=1)
@@ -260,12 +212,16 @@ class MobilityRobustnessOptimization(ABC):
     def _preprocess_ue_topology_data(self) -> pd.DataFrame:
         full_data = self._prepare_all_UEs_from_all_cells_df()
         full_data["log_distance"] = full_data.apply(
-            lambda row: GISTools.get_log_distance(row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]),
+            lambda row: GISTools.get_log_distance(
+                row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]
+            ),
             axis=1,
         )
 
         full_data["cell_rxpwr_dbm"] = full_data.apply(
-            lambda row: calculate_received_power(row["log_distance"], row["cell_carrier_freq_mhz"]),
+            lambda row: calculate_received_power(
+                row["log_distance"], row["cell_carrier_freq_mhz"]
+            ),
             axis=1,
         )
 
@@ -283,7 +239,7 @@ class MobilityRobustnessOptimization(ABC):
             }
         )
         idx_cell_id_mapping = dict(zip(metadata_df.idx, metadata_df.cell_id))
-        # desired_idxs = [1 + r for r in range(n_cell)]
+        desired_idxs = [1 + r for r in range(n_cell)]
 
         n_samples_train = []
         for df in train_per_cell_df:
@@ -307,18 +263,18 @@ class MobilityRobustnessOptimization(ABC):
 
         for train_cell_id, training_data_idx in training_data.items():
             training_data_idx["cell_id"] = train_cell_id
-            training_data_idx["cell_lat"] = self.topology[self.topology["cell_id"] == train_cell_id]["cell_lat"].values[
-                0
-            ]
-            training_data_idx["cell_lon"] = self.topology[self.topology["cell_id"] == train_cell_id]["cell_lon"].values[
-                0
-            ]
-            training_data_idx["cell_az_deg"] = self.topology[self.topology["cell_id"] == train_cell_id][
-                "cell_az_deg"
-            ].values[0]
-            training_data_idx["cell_carrier_freq_mhz"] = self.topology[self.topology["cell_id"] == train_cell_id][
-                "cell_carrier_freq_mhz"
-            ].values[0]
+            training_data_idx["cell_lat"] = self.topology[
+                self.topology["cell_id"] == train_cell_id
+            ]["cell_lat"].values[0]
+            training_data_idx["cell_lon"] = self.topology[
+                self.topology["cell_id"] == train_cell_id
+            ]["cell_lon"].values[0]
+            training_data_idx["cell_az_deg"] = self.topology[
+                self.topology["cell_id"] == train_cell_id
+            ]["cell_az_deg"].values[0]
+            training_data_idx["cell_carrier_freq_mhz"] = self.topology[
+                self.topology["cell_id"] == train_cell_id
+            ]["cell_carrier_freq_mhz"].values[0]
             training_data_idx["relative_bearing"] = [
                 GISTools.get_relative_bearing(
                     training_data_idx["cell_az_deg"].values[0],
@@ -327,7 +283,9 @@ class MobilityRobustnessOptimization(ABC):
                     lat,
                     lon,
                 )
-                for lat, lon in zip(training_data_idx["latitude"], training_data_idx["longitude"])
+                for lat, lon in zip(
+                    training_data_idx["latitude"], training_data_idx["longitude"]
+                )
             ]
 
         return training_data
@@ -335,12 +293,16 @@ class MobilityRobustnessOptimization(ABC):
     def _preprocess_ue_update_data(self) -> pd.DataFrame:
         data = self._prepare_all_UEs_from_all_cells_df(update=True)
         data["log_distance"] = data.apply(
-            lambda row: GISTools.get_log_distance(row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]),
+            lambda row: GISTools.get_log_distance(
+                row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]
+            ),
             axis=1,
         )
 
         data["cell_rxpwr_dbm"] = data.apply(
-            lambda row: calculate_received_power(row["log_distance"], row["cell_carrier_freq_mhz"]),
+            lambda row: calculate_received_power(
+                row["log_distance"], row["cell_carrier_freq_mhz"]
+            ),
             axis=1,
         )
 
@@ -377,18 +339,18 @@ class MobilityRobustnessOptimization(ABC):
 
         for update_cell_id, update_data_idx in update_data.items():
             update_data_idx["cell_id"] = update_cell_id
-            update_data_idx["cell_lat"] = self.topology[self.topology["cell_id"] == update_cell_id]["cell_lat"].values[
-                0
-            ]
-            update_data_idx["cell_lon"] = self.topology[self.topology["cell_id"] == update_cell_id]["cell_lon"].values[
-                0
-            ]
-            update_data_idx["cell_az_deg"] = self.topology[self.topology["cell_id"] == update_cell_id][
-                "cell_az_deg"
-            ].values[0]
-            update_data_idx["cell_carrier_freq_mhz"] = self.topology[self.topology["cell_id"] == update_cell_id][
-                "cell_carrier_freq_mhz"
-            ].values[0]
+            update_data_idx["cell_lat"] = self.topology[
+                self.topology["cell_id"] == update_cell_id
+            ]["cell_lat"].values[0]
+            update_data_idx["cell_lon"] = self.topology[
+                self.topology["cell_id"] == update_cell_id
+            ]["cell_lon"].values[0]
+            update_data_idx["cell_az_deg"] = self.topology[
+                self.topology["cell_id"] == update_cell_id
+            ]["cell_az_deg"].values[0]
+            update_data_idx["cell_carrier_freq_mhz"] = self.topology[
+                self.topology["cell_id"] == update_cell_id
+            ]["cell_carrier_freq_mhz"].values[0]
             update_data_idx["relative_bearing"] = [
                 GISTools.get_relative_bearing(
                     update_data_idx["cell_az_deg"].values[0],
@@ -397,7 +359,9 @@ class MobilityRobustnessOptimization(ABC):
                     lat,
                     lon,
                 )
-                for lat, lon in zip(update_data_idx["latitude"], update_data_idx["longitude"])
+                for lat, lon in zip(
+                    update_data_idx["latitude"], update_data_idx["longitude"]
+                )
             ]
         return update_data
 
@@ -405,11 +369,15 @@ class MobilityRobustnessOptimization(ABC):
         data = self._prepare_all_UEs_from_all_cells_df(prediction=True)
 
         data["log_distance"] = data.apply(
-            lambda row: GISTools.get_log_distance(row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]),
+            lambda row: GISTools.get_log_distance(
+                row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]
+            ),
             axis=1,
         )
         data["cell_rxpwr_dbm"] = data.apply(
-            lambda row: calculate_received_power(row["log_distance"], row["cell_carrier_freq_mhz"]),
+            lambda row: calculate_received_power(
+                row["log_distance"], row["cell_carrier_freq_mhz"]
+            ),
             axis=1,
         )
 
@@ -438,8 +406,10 @@ class MobilityRobustnessOptimization(ABC):
             },
             inplace=True,
         )
-        self.topology["cell_id"] = self.topology["cell_id"].str.replace("cell_", "").astype(int)
-        df["cell_id"] = df["cell_id"].str.extract(r"(\d+)").astype(int)
+        self.topology["cell_id"] = (
+            self.topology["cell_id"].str.replace("cell_", "").astype(int)
+        )
+        df["cell_id"] = df["cell_id"].str.extract("(\d+)").astype(int)
         df = self._add_sinr_column(df)
         return df
 
@@ -458,10 +428,11 @@ class MobilityRobustnessOptimization(ABC):
         noise_linear = 10 ** (constants.LATENT_BACKGROUND_NOISE_DB / 10)
 
         # Compute SINR for each row (UE–cell pair), given its group
-        def compute_row_level_sinr(row: pd.Series, group: pd.DataFrame) -> float:  # where cell column? [DONE]
+        def compute_row_level_sinr(
+            row: pd.Series, group: pd.DataFrame
+        ) -> float:  # where cell column? [DONE]
             """
-                Computes the SINR for a single UE–cell pair by removing interference
-                and noise from the received signal power.
+                Computes the SINR for a single UE–cell pair by removing interference and noise from the received signal power.
 
             Parameters:
                     row (pd.Series): Current row containing signal data.
@@ -487,10 +458,14 @@ class MobilityRobustnessOptimization(ABC):
             signal_dbm = row["cell_rxpower_dbm"]
 
             # Exclude the current row (serving cell) to compute interference
-            interference_linear = np.sum(10 ** (group.loc[group.index != row.name, "cell_rxpower_dbm"] / 10))
+            interference_linear = np.sum(
+                10 ** (group.loc[group.index != row.name, "cell_rxpower_dbm"] / 10)
+            )
             total_interference_plus_noise_linear = interference_linear + noise_linear
 
-            total_interference_plus_noise_dbm = 10 * np.log10(total_interference_plus_noise_linear)
+            total_interference_plus_noise_dbm = 10 * np.log10(
+                total_interference_plus_noise_linear
+            )
             sinr_db = signal_dbm - total_interference_plus_noise_dbm
             return sinr_db
 
@@ -498,7 +473,11 @@ class MobilityRobustnessOptimization(ABC):
         df = df.copy()
         df["sinr_db"] = (
             df.groupby(["ue_id", "cell_carrier_freq_mhz"])
-            .apply(lambda group: group.apply(lambda row: compute_row_level_sinr(row, group), axis=1))
+            .apply(
+                lambda group: group.apply(
+                    lambda row: compute_row_level_sinr(row, group), axis=1
+                )
+            )
             .reset_index(level=[0, 1], drop=True)
         )
 
@@ -534,7 +513,11 @@ def _count_handovers(df: pd.DataFrame) -> int:
     for _, row in df.iterrows():
         ue_id, cell_id, tick = row["ue_id"], row["cell_id"], row["tick"]
 
-        if ue_id in prev_cells and prev_cells[ue_id] != cell_id and prev_cells[ue_id] is not None:
+        if (
+            ue_id in prev_cells
+            and prev_cells[ue_id] != cell_id
+            and prev_cells[ue_id] is not None
+        ):
             if tick == prev_ticks[ue_id] + 1 and cell_id != "RLF":
                 count += 1
 
@@ -545,12 +528,14 @@ def _count_handovers(df: pd.DataFrame) -> int:
 
 def reattach_columns(predicted_df, full_prediction_df):
     # Filter full_prediction_df for the needed columns and drop duplicates based on loc_x and loc_y
-    filtered_full_df = full_prediction_df[["mock_ue_id", "tick", "loc_x", "loc_y"]].drop_duplicates(
-        subset=["loc_x", "loc_y"]
-    )
+    filtered_full_df = full_prediction_df[
+        ["mock_ue_id", "tick", "loc_x", "loc_y"]
+    ].drop_duplicates(subset=["loc_x", "loc_y"])
 
     # Merge with predicted_df based on loc_x and loc_y, ensuring size matches predicted_df
-    merged_df = pd.merge(predicted_df, filtered_full_df, on=["loc_x", "loc_y"], how="left")
+    merged_df = pd.merge(
+        predicted_df, filtered_full_df, on=["loc_x", "loc_y"], how="left"
+    )
 
     # Rename mock_ue_id to ue_id
     merged_df.rename(columns={"mock_ue_id": "ue_id"}, inplace=True)
@@ -589,7 +574,9 @@ def calculate_mro_metric(data: pd.DataFrame) -> float:
     tick_duration_seconds = 1  # 1 second per tick
     T = ticks * tick_duration_seconds
 
-    ns_handover_count = _count_handovers(data)  # Count of handovers to different cells (excluding RLF)
+    ns_handover_count = _count_handovers(
+        data
+    )  # Count of handovers to different cells (excluding RLF)
     nf_handover_count = _count_rlf(data)  # Count of handovers to RLF
 
     # Calculate D
