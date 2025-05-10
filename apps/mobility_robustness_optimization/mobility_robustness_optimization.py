@@ -182,13 +182,21 @@ class MobilityRobustnessOptimization(ABC):
         return training_data
 
     def add_cell_info(self, new_data_with_rx_data, topology):
-        """adds cell information ['cell_id', 'cell_lat', 'cell_lon', 'cell_az_deg'] to the DataFrame based on cell_id"""
-        new_data_with_rx_data["cell_id"] = new_data_with_rx_data["cell_id"].str.replace("cell_", "").astype(int)
-        new_data_with_rx_data_with_cell_info = new_data_with_rx_data.merge(
+        """
+        Adds cell information ['cell_id', 'cell_lat', 'cell_lon', 'cell_az_deg']
+        to the DataFrame based on cell_id.
+        Converts integer cell_id to string format like 'cell_1' to match topology.
+        """
+        # Convert int to str format matching topology: 'cell_1', 'cell_2', etc.
+        if new_data_with_rx_data["cell_id"].dtype == int:
+            new_data_with_rx_data["cell_id"] = new_data_with_rx_data["cell_id"].apply(lambda x: f"cell_{x}")
+
+        # Merge using consistent cell_id format
+        new_data_topology_merged = new_data_with_rx_data.merge(
             topology[["cell_id", "cell_lat", "cell_lon", "cell_az_deg"]], on="cell_id", how="left"
         )
 
-        return new_data_with_rx_data_with_cell_info
+        return new_data_topology_merged
 
     def _predictions(self, pred_data) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
