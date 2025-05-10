@@ -5,9 +5,9 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from gpytorch.settings import cholesky_jitter
-from gpytorch.kernels import ScaleKernel, RBFKernel
+from gpytorch.kernels import RBFKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
+from gpytorch.settings import cholesky_jitter
 
 from notebooks.radp_library import calc_log_distance, calc_relative_bearing, calculate_received_power, get_percell_data
 from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin, NormMethod
@@ -42,18 +42,18 @@ class MobilityRobustnessOptimization(ABC):
 
             expected_columns = {"longitude", "latitude", "cell_id", "cell_rxpwr_dbm"}
             if not expected_columns.issubset(new_data.columns):
-                raise ValueError(
-                    f"The input DataFrame must contain the following columns: {expected_columns}"
-                )
+                raise ValueError(f"The input DataFrame must contain the following columns: {expected_columns}")
 
-            # Ensure string cell IDs match topology
+            # Ensure cell_id ends up in string format for consistency in both new_data and topology
             if self.topology["cell_id"].dtype == int:
                 self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{x}")
             if new_data["cell_id"].dtype == int:
                 new_data["cell_id"] = new_data["cell_id"].apply(lambda x: f"cell_{x}")
 
+            # Prepare the new data for training or updating
             prepared_data = self._prepare_train_or_update_data(new_data)
 
+            # update if bayesian digital twins exist already
             if self.bayesian_digital_twins:
                 print("Updating existing Bayesian Digital Twins with new data.")
 
@@ -63,18 +63,16 @@ class MobilityRobustnessOptimization(ABC):
 
                     # Subsample to at most 300 strongest samples per cell
                     if df.shape[0] > 300:
-                        df = get_percell_data(
-                            data_in=df,
-                            choose_strongest_samples_percell=True,
-                            n_samples=300,
-                        )[0][0]
+                        df = get_percell_data(data_in=df, choose_strongest_samples_percell=True, n_samples=300,)[
+                            0
+                        ][0]
 
                     twin = self.bayesian_digital_twins[cell_id]
                     # Reconfigure the kernel to include scale + RBF
                     twin.model.covar_module = ScaleKernel(RBFKernel())
 
                     # Increase observation noise via GaussianLikelihood
-                    if not hasattr(twin, 'likelihood'):
+                    if not hasattr(twin, "likelihood"):
                         twin.likelihood = GaussianLikelihood()
                     twin.likelihood.noise = 1e-2
 
@@ -82,6 +80,7 @@ class MobilityRobustnessOptimization(ABC):
                     with cholesky_jitter(1e-1):
                         twin.update_trained_gpmodel([df])
 
+            # If no Bayesian Digital Twins exist, train from scratch
             else:
                 print("No Bayesian Digital Twins available for update. Training from scratch.")
                 self._training(maxiter=100, train_data=prepared_data)
@@ -95,7 +94,7 @@ class MobilityRobustnessOptimization(ABC):
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
 
-    def save(bayesian_digital_twins, file_loc):
+    def save(self, bayesian_digital_twins, file_loc):
         """
         Saves the Bayesian Digital Twins to a pickle file. Returns `True` if saving succeeds,
         and `NotImplemented` if it fails.
@@ -130,7 +129,7 @@ class MobilityRobustnessOptimization(ABC):
         """
         pass
 
-    def _training(self, maxiter: int, train_data: pd.DataFrame) -> List[float]:
+    def _training(self, maxiter: int, train_data: Dict[str, pd.DataFrame]) -> List[float]:
         """
         Trains the Bayesian Digital Twins for each cell in the topology using the UE locations and features
         like log distance, relative bearing, and cell received power (Rx power).
@@ -153,7 +152,8 @@ class MobilityRobustnessOptimization(ABC):
             )
         return loss_vs_iters
 
-    def _prepare_train_or_update_data(self, df):
+    def _prepare_train_or_update_data(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """Returnd key value pairs of cell_id and processed DataFrame for each cell_id."""
         required_columns = {"cell_lat", "cell_lon", "cell_az_deg"}
         if not required_columns.issubset(df.columns):
             df = self.add_cell_info(df, self.topology)
@@ -163,6 +163,7 @@ class MobilityRobustnessOptimization(ABC):
 
         self.update_data = self.update_data.loc[:, ["cell_id", "log_distance", "relative_bearing", "cell_rxpwr_dbm"]]
 
+        # anything refering as training indicates training or update data
         train_per_cell_df = [x for _, x in self.update_data.groupby("cell_id")]
         n_cell = len(self.topology.index)
 
