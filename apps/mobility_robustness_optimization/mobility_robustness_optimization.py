@@ -38,6 +38,9 @@ class MobilityRobustnessOptimization(ABC):
         try:
             if not isinstance(new_data, pd.DataFrame):
                 raise TypeError("The input 'new_data' must be a pandas DataFrame.")
+            
+            # TODO: Add condition when data contains only cell_id, lat, lon, rxpower (Real User Data)
+
 
             expected_columns = {"longitude", "latitude", "cell_lat", "cell_lon", "cell_id", "cell_az_deg", "cell_carrier_freq_mhz", "cell_rxpwr_dbm"}
             if not expected_columns.issubset(new_data.columns):
@@ -146,7 +149,6 @@ class MobilityRobustnessOptimization(ABC):
         self.update_data = calc_log_distance(df)
         self.update_data = calc_relative_bearing(self.update_data)
 
-        # TODO: Add condition when data contains only cell_id, lat, lon, log distance, rxpower (Real User Data)
 
         self.update_data.drop(columns=['longitude', 'latitude','cell_lat','cell_lon', 'cell_az_deg','cell_carrier_freq_mhz'], inplace=True)
 
