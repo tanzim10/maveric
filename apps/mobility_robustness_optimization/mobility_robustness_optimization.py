@@ -75,35 +75,17 @@ class MobilityRobustnessOptimization(ABC):
 
             # update if bayesian digital twins exist already
             if self.bayesian_digital_twins:
+                # ? Do we need to use logger instead of print?
                 print("Updating existing Bayesian Digital Twins with new data.")
 
                 for cell_id, df in prepared_data.items():
-                    # Remove near-duplicates in feature space
-                    df = df.drop_duplicates(subset=["log_distance", "relative_bearing"])
-
-                    # Subsample to at most 300 strongest samples per cell
-                    if df.shape[0] > 300:
-                        df = get_percell_data(data_in=df, choose_strongest_samples_percell=True, n_samples=300,)[
-                            0
-                        ][0]
-
-                    twin = self.bayesian_digital_twins[cell_id]
-                    # Reconfigure the kernel to include scale + RBF
-                    twin.model.covar_module = ScaleKernel(RBFKernel())
-
-                    # Increase observation noise via GaussianLikelihood
-                    if not hasattr(twin, "likelihood"):
-                        twin.likelihood = GaussianLikelihood()
-                    twin.likelihood.noise = 1e-2
-
-                    # Use an increased jitter context
-                    with cholesky_jitter(1e-1):
-                        twin.update_trained_gpmodel([df])
-
+                    self._update(cell_id, df)
+                print("Bayesian Digital Twins updated successfully.")
             # If no Bayesian Digital Twins exist, train from scratch
             else:
                 print("No Bayesian Digital Twins available for update. Training from scratch.")
                 self._training(maxiter=100, train_data=prepared_data)
+                print("\nBayesian Digital Twins trained successfully.")
 
         except TypeError as te:
             print(f"TypeError: {te}")
@@ -171,6 +153,38 @@ class MobilityRobustnessOptimization(ABC):
                 )
             )
         return loss_vs_iters
+
+    def _update(self, cell_id: str, df: pd.DataFrame):
+        """
+        Updates the Bayesian Digital Twin (BDT) model for a specific cell.
+
+        Updates by deduplicating samples using 'log_distance' and 'relative_bearing', subsampling up to 300
+        strongest signals, reconfiguring the Gaussian Process with a Scale and RBF kernel, increasing observation
+        noise via GaussianLikelihood, and using higher jitter to stabilize Cholesky decomposition before training
+        on the processed data.
+        """
+        # Remove near-duplicates in feature space
+        df = df.drop_duplicates(subset=["log_distance", "relative_bearing"])
+
+        # Subsample to at most 300 strongest samples per cell
+        if df.shape[0] > 300:
+            df = get_percell_data(data_in=df, choose_strongest_samples_percell=True, n_samples=300,)[
+                0
+            ][0]
+
+        twin = self.bayesian_digital_twins[cell_id]
+
+        # Reconfigure the kernel to include scale + RBF
+        twin.model.covar_module = ScaleKernel(RBFKernel())
+
+        # Increase observation noise via GaussianLikelihood
+        if not hasattr(twin, "likelihood"):
+            twin.likelihood = GaussianLikelihood()  # type: ignore
+        twin.likelihood.noise = 1e-2  # type: ignore
+
+        # Use an increased jitter context
+        with cholesky_jitter(1e-1):
+            twin.update_trained_gpmodel([df])
 
     def _prepare_train_or_update_data(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         """
