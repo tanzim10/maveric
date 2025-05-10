@@ -1,17 +1,14 @@
-from .mobility_robustness_optimization import (
-    MobilityRobustnessOptimization,
-    calculate_mro_metric,
-)
-from radp.digital_twin.utils.constants import RLF_THRESHOLD
-from notebooks.radp_library import get_ue_data
-from radp.digital_twin.utils.cell_selection import (
-    perform_attachment_hyst_ttt,
-    find_hyst_diff,
-)
-import pandas as pd
-import numpy as np
 import warnings
+
+import numpy as np
+import pandas as pd
 from gpytorch.utils.warnings import NumericalWarning
+
+from notebooks.radp_library import get_ue_data
+from radp.digital_twin.utils.cell_selection import find_hyst_diff, perform_attachment_hyst_ttt
+from radp.digital_twin.utils.constants import RLF_THRESHOLD
+
+from .mobility_robustness_optimization import MobilityRobustnessOptimization, calculate_mro_metric
 
 
 class SimpleMRO(MobilityRobustnessOptimization):
@@ -26,22 +23,18 @@ class SimpleMRO(MobilityRobustnessOptimization):
         super().__init__(*args, **kwargs)
         # Additional initialization can be done here if needed
 
-    def solve(self):
+    def solve(self, n_epochs=100):
         """
         Solve the mobility robustness optimization problem.
         """
         # Ensure Bayesian Digital Twins are trained before proceeding
         if not self.bayesian_digital_twins:
-            raise ValueError(
-                "Bayesian Digital Twins are not trained. Train the models before calculating metrics."
-            )
+            raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
 
         # Generate and preprocess simulation data
         self.simulation_data = get_ue_data(self.mobility_model_params)
-        self.simulation_data = self.simulation_data.rename(
-            columns={"lat": "latitude", "lon": "longitude"}
-        )
-        
+        self.simulation_data = self.simulation_data.rename(columns={"lat": "latitude", "lon": "longitude"})
+
         if self.topology["cell_id"].dtype == int:
             self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
 
@@ -50,7 +43,8 @@ class SimpleMRO(MobilityRobustnessOptimization):
         df = full_prediction_df
         df = self._preprocess_simulation_data(df)
 
-        epochs = 100
+        # epochs = 100
+        epochs = n_epochs
         hyst = 0.01
         ttt = 5
         rlf_threshold = RLF_THRESHOLD
@@ -85,8 +79,7 @@ class SimpleMRO(MobilityRobustnessOptimization):
             print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
 
         print(
-            f"\nOptimized Hyst: {score.loc[score['score'].idxmax(), 'hyst']}, Optimized TTT: {int(score.loc[score['score'].idxmax(), 'ttt'])}"
+            f"""\nOptimized Hyst: {score.loc[score['score'].idxmax(), 'hyst']},
+            Optimized TTT: {int(score.loc[score['score'].idxmax(), 'ttt'])}"""
         )
-        return score.loc[score["score"].idxmax(), "hyst"], int(
-            score.loc[score["score"].idxmax(), "ttt"]
-        )
+        return score.loc[score["score"].idxmax(), "hyst"], int(score.loc[score["score"].idxmax(), "ttt"])
