@@ -51,19 +51,10 @@ class MobilityRobustnessOptimization(ABC):
 
             if self.bayesian_digital_twins:
                 print("Updating existing Bayesian Digital Twins with new data.")
-                # TODO: Add Update Logic Here
-                # self.update_data = new_data
-                # updated_data = self._preprocess_ue_update_data()
 
-                # prepared_data_list = list(prepared_data.values())
-                print(self.bayesian_digital_twins)
-                print(self.topology)
-                # for data_idx, update_data_df in enumerate(prepared_data_list):
-                #     update_cell_id = data_idx + 1
-                #     if update_cell_id in self.bayesian_digital_twins:
-                #         self.bayesian_digital_twins[
-                #             update_cell_id
-                #         ].update_trained_gpmodel([update_data_df])
+                for update_cell_id, update_data_df in prepared_data.items():
+                    if update_cell_id in self.bayesian_digital_twins:
+                        self.bayesian_digital_twins[update_cell_id].update_trained_gpmodel([update_data_df])
             else:
                 print("No Bayesian Digital Twins available for update. Training from scratch.")
                 self._training(maxiter=100, train_data=prepared_data)
