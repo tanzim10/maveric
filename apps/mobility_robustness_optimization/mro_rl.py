@@ -11,8 +11,8 @@ from radp.digital_twin.utils.constants import RLF_THRESHOLD
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from gym import Env
-from gym.spaces import Box
+from gymnasium import Env
+from gymnasium.spaces import Box
 import numpy as np
 
 
@@ -38,7 +38,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         self.simulation_data = self.simulation_data.rename(
             columns={"lat": "latitude", "lon": "longitude"}
         )
-        
+
         if self.topology["cell_id"].dtype == int:
             self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
 
@@ -106,25 +106,26 @@ class ReinforcedMROEnv(Env):
         self.state = np.array([reward])
         self.current_step += 1
 
-        done = self.current_step >= self.max_steps
+        terminated = self.current_step >= self.max_steps
+        truncated = False  # Can be customized if needed
 
         print(
             f"Episode: {self.episode_num}, Timestep: {self.current_step}, "
-            f"Hyst: {hyst:.6f}, TTT: {ttt}, Reward: {reward:.6f}, Done: {done}"
+            f"Hyst: {hyst:.6f}, TTT: {ttt}, Reward: {reward:.6f}, Done: {terminated}"
         )
 
-        if done:
+        if terminated:
             avg_reward = self.episode_reward / self.max_steps
             print(f"Episode {self.episode_num} average reward: {avg_reward:.6f}\n")
             self.episode_num += 1
             self.episode_reward = 0.0
 
-        return self.state, reward, done, {}
+        return self.state, reward, terminated, truncated, {}
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.state = np.array([0.0])
         self.current_step = 0
-        return self.state
+        return self.state, {}
 
-    def render(self, mode="human"):
+    def render(self):
         print(f"Current State: {self.state}, Current Step: {self.current_step}")

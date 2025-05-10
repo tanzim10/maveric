@@ -145,6 +145,9 @@ class MobilityRobustnessOptimization(ABC):
     def _prepare_train_or_update_data(self, df):
         self.update_data = calc_log_distance(df)
         self.update_data = calc_relative_bearing(self.update_data)
+
+        # TODO: Add condition when data contains only cell_id, lat, lon, log distance, rxpower (Real User Data)
+
         self.update_data.drop(columns=['longitude', 'latitude','cell_lat','cell_lon', 'cell_az_deg','cell_carrier_freq_mhz'], inplace=True)
 
         train_per_cell_df = [x for _, x in self.update_data.groupby("cell_id")]
