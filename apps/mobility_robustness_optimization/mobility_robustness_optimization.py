@@ -1,6 +1,7 @@
 import os
 import pickle
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -96,29 +97,50 @@ class MobilityRobustnessOptimization(ABC):
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
 
-    def save(self, bayesian_digital_twins, file_loc):
+    def save_bdt(self, file_relative_path="data/"):
         """
-        Saves the Bayesian Digital Twins to a pickle file. Returns `True` if saving succeeds,
-        and `NotImplemented` if it fails.
+        Saves the Bayesian Digital Twins to a pickle file. Returns `True` if saving succeeds.
+        """
+        cwd = Path().absolute()
+        filename = cwd / Path(file_relative_path) / Path("digital_twins.pkl")
 
-        """
-        filename = f"{file_loc}/digital_twins.pkl"
         try:
-            if not isinstance(bayesian_digital_twins, dict):
+            if not isinstance(self.bayesian_digital_twins, dict):
                 raise TypeError("The input 'bayesian_digital_twins' must be a dictionary.")
 
             # Ensure the directory exists
-            os.makedirs(file_loc, exist_ok=True)
+            os.makedirs(file_relative_path, exist_ok=True)
 
             with open(filename, "wb") as fp:
-                pickle.dump(bayesian_digital_twins, fp)
+                pickle.dump(self.bayesian_digital_twins, fp)
 
-            print("Twins Saved Successfully as Pickle.")
+            print(f"Twins Saved Successfully as Pickle at: {filename}")
+
             return True  # Indicate successful save
+
         except TypeError as te:
             print(f"TypeError: {te}")
         except OSError as oe:
             print(f"OSError: {oe}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+
+    def load_bdt(self, file_relative_path="data/digital_twins.pkl"):
+        """
+        Loads the Bayesian Digital Twins from a pickle file. Returns `True` if loading succeeds.
+        """
+        cwd = Path().absolute()
+        filename = cwd / Path(file_relative_path)
+
+        try:
+            with open(filename, "rb") as fp:
+                self.bayesian_digital_twins = pickle.load(fp)
+            print(f"Twins Loaded Successfully from Pickle at: {filename}")
+
+            return True  # Indicate successful load
+
+        except FileNotFoundError as fnf:
+            print(f"FileNotFoundError: {fnf}")
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
 
