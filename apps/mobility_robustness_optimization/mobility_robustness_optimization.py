@@ -44,6 +44,8 @@ class MobilityRobustnessOptimization(ABC):
                 raise ValueError(
                     f"The input DataFrame must contain the following columns: {expected_columns}"
                 )
+            new_data["cell_id"] = new_data["cell_id"].apply(lambda x: f"cell_{x}")
+            self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{x}")
             prepared_data = self._prepare_train_or_update_data(new_data)
 
             if self.bayesian_digital_twins:
@@ -105,8 +107,6 @@ class MobilityRobustnessOptimization(ABC):
             print(f"OSError: {oe}")
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
-
-        return NotImplemented  # Return NotImplemented on failure
 
     @abstractmethod
     def solve(self):
