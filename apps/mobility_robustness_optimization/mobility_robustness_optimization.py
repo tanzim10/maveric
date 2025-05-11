@@ -4,6 +4,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import warnings
+from gpytorch.utils.warnings import NumericalWarning
+# Suppress the specific NumericalWarning from gpytorch
+warnings.filterwarnings("ignore", category=NumericalWarning)
+
 import numpy as np
 import pandas as pd
 from gpytorch.kernels import RBFKernel, ScaleKernel
@@ -189,15 +194,16 @@ class MobilityRobustnessOptimization(ABC):
         df = df.drop_duplicates(subset=["log_distance", "relative_bearing"])
 
         # Subsample to at most 300 strongest samples per cell
-        if df.shape[0] > 300:
-            df = get_percell_data(data_in=df, choose_strongest_samples_percell=True, n_samples=300,)[
+        if df.shape[0] > 500:
+            df = get_percell_data(data_in=df, choose_strongest_samples_percell=True, n_samples=500,)[
                 0
             ][0]
 
         twin = self.bayesian_digital_twins[cell_id]
 
+        # Note: Not Necessary to avoid jitter
         # Reconfigure the kernel to include scale + RBF
-        twin.model.covar_module = ScaleKernel(RBFKernel())
+        # twin.model.covar_module = ScaleKernel(RBFKernel())
 
         # Increase observation noise via GaussianLikelihood
         if not hasattr(twin, "likelihood"):

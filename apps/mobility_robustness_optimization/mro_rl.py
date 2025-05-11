@@ -14,6 +14,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium import Env
 from gymnasium.spaces import Box
 import numpy as np
+import torch
 
 
 class ReinforcedMRO(MobilityRobustnessOptimization):
@@ -24,7 +25,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def solve(self):
+    def solve(self, total_timesteps=100):
         """
         Trains a PPO agent to optimize hysteresis and TTT values.
         """
@@ -56,9 +57,10 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
             [lambda: ReinforcedMROEnv(df, RLF_THRESHOLD, hyst_range, ttt_range)]
         )
 
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         # PPO agent
-        model = PPO("MlpPolicy", env, verbose=2, n_steps=64, batch_size=64)
-        model.learn(total_timesteps=1000)
+        model = PPO("MlpPolicy", env, verbose=2, n_steps=64, batch_size=64, device=device)
+        model.learn(total_timesteps)
 
         # Predict optimal action using trained model
         obs = env.reset()
@@ -67,7 +69,9 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         # Ensure ttt is an integer
         hyst, ttt = action[0]
         ttt = int(round(ttt))
-
+        print(
+            f"\nOptimized Hyst: {hyst},\nOptimized TTT: {ttt}"
+        )
         return hyst, ttt
 
 

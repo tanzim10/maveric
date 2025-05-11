@@ -79,7 +79,6 @@ class SimpleMRO(MobilityRobustnessOptimization):
             print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
 
         print(
-            f"""\nOptimized Hyst: {score.loc[score['score'].idxmax(), 'hyst']},
-            Optimized TTT: {int(score.loc[score['score'].idxmax(), 'ttt'])}"""
+            f"\nOptimized Hyst: {score.loc[score['score'].idxmax(), 'hyst']},\nOptimized TTT: {int(score.loc[score['score'].idxmax(), 'ttt'])}"
         )
         return score.loc[score["score"].idxmax(), "hyst"], int(score.loc[score["score"].idxmax(), "ttt"])
