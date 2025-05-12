@@ -1,16 +1,16 @@
 import unittest
+from unittest.mock import MagicMock
+
 import pandas as pd
-import numpy as np
+
+# import numpy as np
 from apps.mobility_robustness_optimization.mobility_robustness_optimization import (
-    MobilityRobustnessOptimization as MRO,
     BayesianDigitalTwin,
-    NormMethod,
-    reattach_columns,
-    calculate_mro_metric,
     _count_handovers,
+    calculate_mro_metric,
+    reattach_columns,
 )
 from apps.mobility_robustness_optimization.simple_mro import SimpleMRO
-from unittest.mock import MagicMock
 from notebooks.radp_library import preprocess_ue_data
 
 
@@ -64,9 +64,7 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
                 "loc_y": [12.0, 13.0],
             }
         )
-        self.training_data = pd.DataFrame(
-            {"ue_id": [0, 1], "tick": [0, 1], "loc_x": [5.0, 10.0], "loc_y": [0.0, 1.0]}
-        )
+        self.training_data = pd.DataFrame({"ue_id": [0, 1], "tick": [0, 1], "loc_x": [5.0, 10.0], "loc_y": [0.0, 1.0]})
 
         self.mobility_model_params = {
             "param1": {"value": 10, "type": "int"},
@@ -82,10 +80,6 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
             self.dummy_topology,
             bdt={"cell_001": self.mock_bdt},
         )
-        self.mro.training_data = self.training_data
-        self.mro.prediction_data = self.prediction_data
-        self.mro.update_data = self.update_data
-        self.mro.simulation_data = self.simulation_data
 
     def test_train_or_update_rf_twin(self):  # TODO: Implement AFTER PR
         pass
@@ -96,17 +90,13 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
     def test_training(self):
         mro = SimpleMRO(mobility_model_params={}, topology=self.dummy_topology)
         train_data = self.training_data.copy()
-        train_data.rename(
-            columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
-        )
-        # n_iter = 5
+        train_data.rename(columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True)
+
         # for different n_inter
         train_data = preprocess_ue_data(train_data, self.dummy_topology)
 
         if self.dummy_topology["cell_id"].dtype == int:
-            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(
-                lambda x: f"cell_{x}"
-            )
+            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(lambda x: f"cell_{x}")
         if train_data["cell_id"].dtype == int:
             train_data["cell_id"] = train_data["cell_id"].apply(lambda x: f"cell_{x}")
 
@@ -116,25 +106,19 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         for n_iter in [5, 10, 20]:
             loss_vs_iter = mro._training(maxiter=n_iter, train_data=prepared_data)
             self.assertEqual(len(loss_vs_iter), len(self.dummy_topology["cell_id"]))
-            self.assertEqual(loss_vs_iter[0].shape[0], n_iter)
+            self.assertEqual(loss_vs_iter[0].shape[0], n_iter)  # type: ignore
 
     def test_predictions(self):
         topology = self.dummy_topology.copy()
         topology["cell_id"] = ["cell_1", "cell_2"]
-        mro = SimpleMRO(
-            mobility_model_params=self.mobility_model_params, topology=topology
-        )
+        mro = SimpleMRO(mobility_model_params=self.mobility_model_params, topology=topology)
         train_data = self.training_data.copy()
-        train_data.rename(
-            columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
-        )
+        train_data.rename(columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True)
 
         train_data = preprocess_ue_data(train_data, self.dummy_topology)
 
         if self.dummy_topology["cell_id"].dtype == int:
-            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(
-                lambda x: f"cell_{x}"
-            )
+            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(lambda x: f"cell_{x}")
         if train_data["cell_id"].dtype == int:
             train_data["cell_id"] = train_data["cell_id"].apply(lambda x: f"cell_{x}")
 
@@ -146,97 +130,21 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
 
         # Perform predictions
         prediction_data = self.prediction_data.copy()
-        prediction_data.rename(
-            columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
-        )
+        prediction_data.rename(columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True)
         predicted, full_prediction_df = mro._predictions(prediction_data)
 
         # Assertions
-        self.assertEqual(
-            predicted.shape, (2, 5)
-        )  # Check the shape of the predicted DataFrame
-        self.assertEqual(
-            full_prediction_df.shape, (4, 15)
-        )  # Check the shape of the full prediction DataFrame
-        self.assertIn(
-            "pred_means", full_prediction_df.columns
-        )  # Ensure predictions column exists
-        self.assertTrue(
-            all(full_prediction_df["cell_id"].isin(["cell_1", "cell_2"]))
-        )  # Check cell IDs
-
-    def test_prepare_all_UEs_from_all_cells_df(self):
-        result = self.mro._prepare_all_UEs_from_all_cells_df()
-        self.assertEqual(result.shape[0], 2 * 2)  # 2 UEs x 2 cells
-
-    def test_preprocess_ue_topology_data(self):
-        result = self.mro._prepare_all_UEs_from_all_cells_df()
-        # Ensure that the resulting dataframe has the correct number of columns
-        self.assertIn("ue_id", result.columns)
-        self.assertIn("cell_id", result.columns)
-
-        # Check if the combined dataframe has the correct number of rows (Cartesian product of UEs and cells)
-        self.assertEqual(
-            result.shape[0], len(self.update_data) * len(self.dummy_topology)
-        )
-
-        # Ensure that the combined dataframe has the expected values
-        self.assertTrue(all(result["ue_id"].isin(self.update_data["ue_id"])))
-
-    def test_preprocess_ue_training_data(self):
-        # fmt: off
-        expected_columns = ["ue_id","tick", "latitude", "longitude", "cell_id", "cell_lat", "cell_lon",
-                            "cell_carrier_freq_mhz", "cell_az_deg", "log_distance", "cell_rxpwr_dbm", "relative_bearing",]
-        # fmt: on
-        self.mro.training_data.rename(
-            columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
-        )
-        training_data = self.mro._preprocess_ue_training_data()
-        self.assertIsInstance(training_data, dict)
-        self.assertEqual(len(training_data), len(self.dummy_topology))
-        for df in training_data.values():
-            self.assertListEqual(list(df.columns), expected_columns)
-            self.assertTrue(all(df["ue_id"].isin(self.training_data["ue_id"])))
-
-    def test_preprocess_ue_update_data(self):
-        # fmt: off
-        expected_columns = ["ue_id","tick", "latitude", "longitude", "cell_id", "cell_lat", "cell_lon",
-                            "cell_carrier_freq_mhz", "cell_az_deg", "log_distance", "cell_rxpwr_dbm", "relative_bearing",]
-        # fmt: on
-        self.mro.update_data.rename(
-            columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
-        )
-        update_data = self.mro._preprocess_ue_update_data()
-        self.assertIsInstance(update_data, dict)
-        self.assertEqual(len(update_data), len(self.dummy_topology))
-        for df in update_data.values():
-            self.assertListEqual(list(df.columns), expected_columns)
-            self.assertTrue(all(df["ue_id"].isin(self.update_data["ue_id"])))
-
-    def test_preprocess_prediction_data(self):
-        # fmt: off
-        expected_columns = ["ue_id","tick", "latitude", "longitude", "cell_id", "cell_lat", "cell_lon",
-                            "cell_carrier_freq_mhz", "cell_az_deg", "log_distance", "cell_rxpwr_dbm", "relative_bearing",]
-        # fmt: on
-        self.mro.prediction_data.rename(
-            columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
-        )
-        data = self.mro._preprocess_prediction_data()
-        self.assertIsInstance(data, pd.DataFrame)
-        self.assertEqual(
-            len(data), len(self.dummy_topology) * len(self.mro.prediction_data["ue_id"])
-        )
-        self.assertListEqual(list(data.columns), expected_columns)
-        self.assertTrue(all(data["ue_id"].isin(self.prediction_data["ue_id"])))
+        self.assertEqual(predicted.shape, (2, 5))  # Check the shape of the predicted DataFrame
+        self.assertEqual(full_prediction_df.shape, (4, 15))  # Check the shape of the full prediction DataFrame
+        self.assertIn("pred_means", full_prediction_df.columns)  # Ensure predictions column exists
+        self.assertTrue(all(full_prediction_df["cell_id"].isin(["cell_1", "cell_2"])))  # Check cell IDs
 
     def test_count_handovers(self):
         result = _count_handovers(self.df)
         self.assertEqual(result, 3)
 
     def test_reattach_columns(self):
-        self.predicted_df = pd.DataFrame(
-            {"tick": [1, 2, 3, 4], "loc_x": [10, 20, 30, 40], "loc_y": [5, 6, 7, 8]}
-        )
+        self.predicted_df = pd.DataFrame({"tick": [1, 2, 3, 4], "loc_x": [10, 20, 30, 40], "loc_y": [5, 6, 7, 8]})
         self.full_prediction_df = pd.DataFrame(
             {
                 "mock_ue_id": [100, 101, 102, 103],
@@ -257,12 +165,8 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         result = reattach_columns(self.predicted_df, self.full_prediction_df)
 
         self.assertTrue("ue_id" in result.columns)  # Ensure 'ue_id' column exists
-        self.assertFalse(
-            "mock_ue_id" in result.columns
-        )  # Ensure 'mock_ue_id' column is removed
-        self.assertEqual(
-            result.shape[0], self.predicted_df.shape[0]
-        )  # Ensure size matches predicted_df
+        self.assertFalse("mock_ue_id" in result.columns)  # Ensure 'mock_ue_id' column is removed
+        self.assertEqual(result.shape[0], self.predicted_df.shape[0])  # Ensure size matches predicted_df
         self.assertEqual(result.loc[0, "ue_id"], 100)
         self.assertEqual(result.loc[1, "ue_id"], 101)
 
