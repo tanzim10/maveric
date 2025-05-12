@@ -203,7 +203,7 @@ class MobilityRobustnessOptimization(ABC):
 
         # Note: Not Necessary to avoid jitter
         # Reconfigure the kernel to include scale + RBF
-        # twin.model.covar_module = ScaleKernel(RBFKernel())
+        twin.model.covar_module = ScaleKernel(RBFKernel())
 
         # Increase observation noise via GaussianLikelihood
         if not hasattr(twin, "likelihood"):
