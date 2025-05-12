@@ -41,7 +41,9 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         )
 
         if self.topology["cell_id"].dtype == int:
-            self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
+            self.topology["cell_id"] = self.topology["cell_id"].apply(
+                lambda x: f"cell_{int(x)}"
+            )
 
         predictions, full_prediction_df = self._predictions(self.simulation_data)
         df = self._preprocess_simulation_data(full_prediction_df)
@@ -59,7 +61,9 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # PPO agent
-        model = PPO("MlpPolicy", env, verbose=2, n_steps=64, batch_size=64, device=device)
+        model = PPO(
+            "MlpPolicy", env, verbose=2, n_steps=64, batch_size=64, device=device
+        )
         model.learn(total_timesteps)
 
         # Predict optimal action using trained model
@@ -69,9 +73,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         # Ensure ttt is an integer
         hyst, ttt = action[0]
         ttt = int(round(ttt))
-        print(
-            f"\nOptimized Hyst: {hyst},\nOptimized TTT: {ttt}"
-        )
+        print(f"\nOptimized Hyst: {hyst},\nOptimized TTT: {ttt}")
         return hyst, ttt
 
 

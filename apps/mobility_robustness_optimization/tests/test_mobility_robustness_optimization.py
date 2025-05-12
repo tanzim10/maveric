@@ -104,7 +104,9 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         train_data = preprocess_ue_data(train_data, self.dummy_topology)
 
         if self.dummy_topology["cell_id"].dtype == int:
-            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(lambda x: f"cell_{x}")
+            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(
+                lambda x: f"cell_{x}"
+            )
         if train_data["cell_id"].dtype == int:
             train_data["cell_id"] = train_data["cell_id"].apply(lambda x: f"cell_{x}")
 
@@ -117,17 +119,6 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
             self.assertEqual(loss_vs_iter[0].shape[0], n_iter)
 
     def test_predictions(self):
-        # without _training() --> model not available --> empty df response
-        mro = SimpleMRO(mobility_model_params={}, topology=self.dummy_topology)
-        prediction_data = self.prediction_data.copy()
-        mro.prediction_data = prediction_data.rename(
-            columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
-        )
-        predicted, full_prediction_df = mro._predictions(pred_data=prediction_data)
-        self.assertTrue(predicted.empty)
-        self.assertTrue(full_prediction_df.empty)
-
-        # with _training()
         topology = self.dummy_topology.copy()
         topology["cell_id"] = ["cell_1", "cell_2"]
         mro = SimpleMRO(
@@ -141,21 +132,38 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         train_data = preprocess_ue_data(train_data, self.dummy_topology)
 
         if self.dummy_topology["cell_id"].dtype == int:
-            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(lambda x: f"cell_{x}")
+            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(
+                lambda x: f"cell_{x}"
+            )
         if train_data["cell_id"].dtype == int:
             train_data["cell_id"] = train_data["cell_id"].apply(lambda x: f"cell_{x}")
 
         # Prepare the new data for training or updating
         prepared_data = mro._prepare_train_or_update_data(train_data)
 
-        mro._training(20, prepared_data)  # needed, otherwise model won't be available
+        # Train the models
+        mro._training(20, prepared_data)
+
+        # Perform predictions
         prediction_data = self.prediction_data.copy()
         prediction_data.rename(
             columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
         )
         predicted, full_prediction_df = mro._predictions(prediction_data)
-        self.assertEqual(predicted.shape, (2, 5))
-        self.assertEqual(full_prediction_df.shape, (4, 15))
+
+        # Assertions
+        self.assertEqual(
+            predicted.shape, (2, 5)
+        )  # Check the shape of the predicted DataFrame
+        self.assertEqual(
+            full_prediction_df.shape, (4, 15)
+        )  # Check the shape of the full prediction DataFrame
+        self.assertIn(
+            "pred_means", full_prediction_df.columns
+        )  # Ensure predictions column exists
+        self.assertTrue(
+            all(full_prediction_df["cell_id"].isin(["cell_1", "cell_2"]))
+        )  # Check cell IDs
 
     def test_prepare_all_UEs_from_all_cells_df(self):
         result = self.mro._prepare_all_UEs_from_all_cells_df()

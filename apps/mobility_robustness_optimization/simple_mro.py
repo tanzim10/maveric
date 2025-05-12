@@ -5,10 +5,16 @@ import pandas as pd
 from gpytorch.utils.warnings import NumericalWarning
 
 from notebooks.radp_library import get_ue_data
-from radp.digital_twin.utils.cell_selection import find_hyst_diff, perform_attachment_hyst_ttt
+from radp.digital_twin.utils.cell_selection import (
+    find_hyst_diff,
+    perform_attachment_hyst_ttt,
+)
 from radp.digital_twin.utils.constants import RLF_THRESHOLD
 
-from .mobility_robustness_optimization import MobilityRobustnessOptimization, calculate_mro_metric
+from .mobility_robustness_optimization import (
+    MobilityRobustnessOptimization,
+    calculate_mro_metric,
+)
 
 
 class SimpleMRO(MobilityRobustnessOptimization):
@@ -29,14 +35,20 @@ class SimpleMRO(MobilityRobustnessOptimization):
         """
         # Ensure Bayesian Digital Twins are trained before proceeding
         if not self.bayesian_digital_twins:
-            raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
+            raise ValueError(
+                "Bayesian Digital Twins are not trained. Train the models before calculating metrics."
+            )
 
         # Generate and preprocess simulation data
         self.simulation_data = get_ue_data(self.mobility_model_params)
-        self.simulation_data = self.simulation_data.rename(columns={"lat": "latitude", "lon": "longitude"})
+        self.simulation_data = self.simulation_data.rename(
+            columns={"lat": "latitude", "lon": "longitude"}
+        )
 
         if self.topology["cell_id"].dtype == int:
-            self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
+            self.topology["cell_id"] = self.topology["cell_id"].apply(
+                lambda x: f"cell_{int(x)}"
+            )
 
         # Predict power and perform attachment
         predictions, full_prediction_df = self._predictions(self.simulation_data)
@@ -81,4 +93,6 @@ class SimpleMRO(MobilityRobustnessOptimization):
         print(
             f"\nOptimized Hyst: {score.loc[score['score'].idxmax(), 'hyst']},\nOptimized TTT: {int(score.loc[score['score'].idxmax(), 'ttt'])}"
         )
-        return score.loc[score["score"].idxmax(), "hyst"], int(score.loc[score["score"].idxmax(), "ttt"])
+        return score.loc[score["score"].idxmax(), "hyst"], int(
+            score.loc[score["score"].idxmax(), "ttt"]
+        )
