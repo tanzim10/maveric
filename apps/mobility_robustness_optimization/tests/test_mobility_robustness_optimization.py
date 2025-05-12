@@ -11,6 +11,7 @@ from apps.mobility_robustness_optimization.mobility_robustness_optimization impo
 )
 from apps.mobility_robustness_optimization.simple_mro import SimpleMRO
 from unittest.mock import MagicMock
+from notebooks.radp_library import preprocess_ue_data
 
 
 class TestMobilityRobustnessOptimization(unittest.TestCase):
@@ -100,8 +101,18 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         )
         # n_iter = 5
         # for different n_inter
+        train_data = preprocess_ue_data(train_data, self.dummy_topology)
+
+        if self.dummy_topology["cell_id"].dtype == int:
+            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(lambda x: f"cell_{x}")
+        if train_data["cell_id"].dtype == int:
+            train_data["cell_id"] = train_data["cell_id"].apply(lambda x: f"cell_{x}")
+
+        # Prepare the new data for training or updating
+        prepared_data = mro._prepare_train_or_update_data(train_data)
+
         for n_iter in [5, 10, 20]:
-            loss_vs_iter = mro._training(maxiter=n_iter, train_data=train_data)
+            loss_vs_iter = mro._training(maxiter=n_iter, train_data=prepared_data)
             self.assertEqual(len(loss_vs_iter), len(self.dummy_topology["cell_id"]))
             self.assertEqual(loss_vs_iter[0].shape[0], n_iter)
 
@@ -126,7 +137,18 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         train_data.rename(
             columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
         )
-        mro._training(20, train_data)  # needed, otherwise model won't be available
+
+        train_data = preprocess_ue_data(train_data, self.dummy_topology)
+
+        if self.dummy_topology["cell_id"].dtype == int:
+            self.dummy_topology["cell_id"] = self.dummy_topology["cell_id"].apply(lambda x: f"cell_{x}")
+        if train_data["cell_id"].dtype == int:
+            train_data["cell_id"] = train_data["cell_id"].apply(lambda x: f"cell_{x}")
+
+        # Prepare the new data for training or updating
+        prepared_data = mro._prepare_train_or_update_data(train_data)
+
+        mro._training(20, prepared_data)  # needed, otherwise model won't be available
         prediction_data = self.prediction_data.copy()
         prediction_data.rename(
             columns={"loc_x": "latitude", "loc_y": "longitude"}, inplace=True
