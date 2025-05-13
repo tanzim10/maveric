@@ -1179,3 +1179,95 @@ def preprocess_ue_data(data, topology):
     cartesian_df = get_ues_cells_cartesian_df(data, topology)
     cartesian_df = calc_log_distance(cartesian_df)
     return calc_rx_power(cartesian_df)
+
+
+def normalize_cell_ids(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalizes the 'cell_id' column in the DataFrame by ensuring all IDs follow the 'cell_<integer>' format.
+    """
+
+    df = df.copy()
+    df["cell_id"] = df["cell_id"].apply(lambda x: f"cell_{int(float(x))}" if not str(x).startswith("cell_") else str(x))
+    return df
+
+
+def check_cartesian_format(df: pd.DataFrame, topology: pd.DataFrame) -> bool:
+    """
+    Validates that the DataFrame has the expected cartesian format for cell IDs per pixel.
+    """
+    expected_cells = list(topology["cell_id"])
+    expected_cell_set = set(expected_cells)
+    num_expected_cells = len(expected_cells)
+
+    # Check if the set of cell_ids in the DataFrame matches the expected set
+    actual_cell_set = set(df["cell_id"])
+    if actual_cell_set != expected_cell_set:
+        missing_cells = expected_cell_set - actual_cell_set
+        extra_cells = actual_cell_set - expected_cell_set
+
+        raise ValueError(
+            f"Cell ID mismatch detected:\n" f"  Missing cells: {missing_cells}\n" f"  Extra cells: {extra_cells}"
+        )
+
+    # Group by pixel
+    grouped = df.groupby(["latitude", "longitude"])
+
+    for (lat, lon), group in grouped:
+        cell_ids = list(group["cell_id"])
+        cell_counts = pd.Series(cell_ids).value_counts()
+
+        total_rows = len(cell_ids)
+
+        if total_rows % num_expected_cells != 0:
+            raise ValueError(
+                f"""
+                For Pixel ({lat}, {lon}): total rows = {total_rows} not divisible
+                by expected # of cells from topology = {num_expected_cells}, indicating missing or extra cells.
+                """
+            )
+
+        k = total_rows // num_expected_cells  # number of revisits
+
+        # Check exact counts for each expected cell_id
+        extra = []
+        wrong_counts = []
+
+        for cell in expected_cell_set:
+            count = cell_counts.get(cell, 0)
+            if count != k:
+                wrong_counts.append((cell, count))
+
+        unexpected_cells = set(cell_counts.index) - expected_cell_set
+        if unexpected_cells:
+            extra.extend(unexpected_cells)
+
+        if wrong_counts or extra:
+            raise ValueError(
+                f"Pixel ({lat}, {lon}):\n"
+                f"  Expected {k} of each: {expected_cell_set}\n"
+                f"  Wrong counts: {wrong_counts}\n"
+                f"  Unexpected cells: {extra}"
+            )
+
+    return True
+
+
+def add_cell_info(new_data_with_rx_data: pd.DataFrame, topology: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds cell information ['cell_id', 'cell_lat', 'cell_lon', 'cell_az_deg']
+    to the DataFrame based on cell_id.
+
+    Converts integer cell_id to string format like 'cell_1' to match topology.
+    """
+    # Convert int to str format matching topology: 'cell_1', 'cell_2', etc.
+    if new_data_with_rx_data["cell_id"].dtype == int:
+        new_data_with_rx_data["cell_id"] = new_data_with_rx_data["cell_id"].apply(lambda x: f"cell_{x}")
+
+    # Merge using consistent cell_id format
+    new_data_topology_merged = new_data_with_rx_data.merge(
+        topology[["cell_id", "cell_lat", "cell_lon", "cell_az_deg"]],
+        on="cell_id",
+        how="left",
+    )
+
+    return new_data_topology_merged

@@ -12,7 +12,15 @@ from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.settings import cholesky_jitter
 from gpytorch.utils.warnings import NumericalWarning
 
-from notebooks.radp_library import calc_log_distance, calc_relative_bearing, get_percell_data, preprocess_ue_data
+from notebooks.radp_library import (
+    add_cell_info,
+    calc_log_distance,
+    calc_relative_bearing,
+    check_cartesian_format,
+    get_percell_data,
+    normalize_cell_ids,
+    preprocess_ue_data,
+)
 from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin, NormMethod
 from radp.digital_twin.utils import constants
 from radp.digital_twin.utils.cell_selection import perform_attachment
@@ -67,11 +75,11 @@ class MobilityRobustnessOptimization(ABC):
                 raise ValueError(f"The input DataFrame must contain the following columns: {expected_columns}")
 
             # normalize cell_id format - regardless of dtype
-            self.topology = self._normalize_cell_ids(self.topology)
-            new_data = self._normalize_cell_ids(new_data)
+            self.topology = normalize_cell_ids(self.topology)
+            new_data = normalize_cell_ids(new_data)
 
             # Check if the new data is in the expected cartesian format
-            self._check_cartesian_format(new_data)
+            check_cartesian_format(new_data, self.topology)
 
             # Prepare the new data for training or updating
             prepared_data = self._prepare_train_or_update_data(new_data)
@@ -164,77 +172,6 @@ class MobilityRobustnessOptimization(ABC):
         """
         pass
 
-    def _normalize_cell_ids(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Normalizes the 'cell_id' column in the DataFrame by ensuring all IDs follow the 'cell_<integer>' format.
-        """
-
-        df = df.copy()
-        df["cell_id"] = df["cell_id"].apply(
-            lambda x: f"cell_{int(float(x))}" if not str(x).startswith("cell_") else str(x)
-        )
-        return df
-
-    def _check_cartesian_format(self, df: pd.DataFrame) -> bool:
-        """
-        Validates that the DataFrame has the expected cartesian format for cell IDs per pixel.
-        """
-        expected_cells = list(self.topology["cell_id"])
-        expected_cell_set = set(expected_cells)
-        num_expected_cells = len(expected_cells)
-
-        # Check if the set of cell_ids in the DataFrame matches the expected set
-        actual_cell_set = set(df["cell_id"])
-        if actual_cell_set != expected_cell_set:
-            missing_cells = expected_cell_set - actual_cell_set
-            extra_cells = actual_cell_set - expected_cell_set
-
-            raise ValueError(
-                f"Cell ID mismatch detected:\n" f"  Missing cells: {missing_cells}\n" f"  Extra cells: {extra_cells}"
-            )
-
-        # Group by pixel
-        grouped = df.groupby(["latitude", "longitude"])
-
-        for (lat, lon), group in grouped:
-            cell_ids = list(group["cell_id"])
-            cell_counts = pd.Series(cell_ids).value_counts()
-
-            total_rows = len(cell_ids)
-
-            if total_rows % num_expected_cells != 0:
-                raise ValueError(
-                    f"""
-                    For Pixel ({lat}, {lon}): total rows = {total_rows} not divisible
-                    by expected # of cells from topology = {num_expected_cells}, indicating missing or extra cells.
-                    """
-                )
-
-            k = total_rows // num_expected_cells  # number of revisits
-
-            # Check exact counts for each expected cell_id
-            extra = []
-            wrong_counts = []
-
-            for cell in expected_cell_set:
-                count = cell_counts.get(cell, 0)
-                if count != k:
-                    wrong_counts.append((cell, count))
-
-            unexpected_cells = set(cell_counts.index) - expected_cell_set
-            if unexpected_cells:
-                extra.extend(unexpected_cells)
-
-            if wrong_counts or extra:
-                raise ValueError(
-                    f"Pixel ({lat}, {lon}):\n"
-                    f"  Expected {k} of each: {expected_cell_set}\n"
-                    f"  Wrong counts: {wrong_counts}\n"
-                    f"  Unexpected cells: {extra}"
-                )
-
-        return True
-
     def _training(self, maxiter: int, train_data: Dict[str, pd.DataFrame]) -> List[float]:
         """
         Trains the Bayesian Digital Twins for each cell in the topology using the UE locations and features
@@ -299,7 +236,7 @@ class MobilityRobustnessOptimization(ABC):
         """
         required_columns = {"cell_lat", "cell_lon", "cell_az_deg"}
         if not required_columns.issubset(df.columns):
-            df = self.add_cell_info(df, self.topology)
+            df = add_cell_info(df, self.topology)
 
         self.update_data = calc_log_distance(df)
         self.update_data = calc_relative_bearing(self.update_data)
@@ -340,26 +277,6 @@ class MobilityRobustnessOptimization(ABC):
             training_data[train_cell_id] = df
 
         return training_data
-
-    def add_cell_info(self, new_data_with_rx_data: pd.DataFrame, topology: pd.DataFrame) -> pd.DataFrame:
-        """
-        Adds cell information ['cell_id', 'cell_lat', 'cell_lon', 'cell_az_deg']
-        to the DataFrame based on cell_id.
-
-        Converts integer cell_id to string format like 'cell_1' to match topology.
-        """
-        # Convert int to str format matching topology: 'cell_1', 'cell_2', etc.
-        if new_data_with_rx_data["cell_id"].dtype == int:
-            new_data_with_rx_data["cell_id"] = new_data_with_rx_data["cell_id"].apply(lambda x: f"cell_{x}")
-
-        # Merge using consistent cell_id format
-        new_data_topology_merged = new_data_with_rx_data.merge(
-            topology[["cell_id", "cell_lat", "cell_lon", "cell_az_deg"]],
-            on="cell_id",
-            how="left",
-        )
-
-        return new_data_topology_merged
 
     def _predictions(self, pred_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
