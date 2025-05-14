@@ -1,10 +1,12 @@
 import warnings
+from typing import Optional
 
 import numpy as np
 import pandas as pd
 from gpytorch.utils.warnings import NumericalWarning
 
 from notebooks.radp_library import get_ue_data
+from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin
 from radp.digital_twin.utils.cell_selection import find_hyst_diff, perform_attachment_hyst_ttt
 from radp.digital_twin.utils.constants import RLF_THRESHOLD
 
@@ -19,9 +21,13 @@ class SimpleMRO(MobilityRobustnessOptimization):
     expanded for parameter optimization in future developments.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Additional initialization can be done here if needed
+    def __init__(
+        self,
+        mobility_model_params: dict[str, dict],
+        topology: pd.DataFrame,
+        bdt: Optional[dict[str, BayesianDigitalTwin]] = None,
+    ):
+        super().__init__(mobility_model_params, topology, bdt)
 
     def solve(self, n_epochs=100):
         """

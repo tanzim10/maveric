@@ -1,4 +1,7 @@
+from typing import Optional
+
 import numpy as np
+import pandas as pd
 import torch
 from gymnasium import Env
 from gymnasium.spaces import Box
@@ -6,6 +9,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from notebooks.radp_library import get_ue_data
+from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin
 from radp.digital_twin.utils.cell_selection import find_hyst_diff, perform_attachment_hyst_ttt
 from radp.digital_twin.utils.constants import RLF_THRESHOLD
 
@@ -17,8 +21,13 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
     Solves the mobility robustness optimization problem using reinforcement learning (PPO).
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        mobility_model_params: dict[str, dict],
+        topology: pd.DataFrame,
+        bdt: Optional[dict[str, BayesianDigitalTwin]] = None,
+    ):
+        super().__init__(mobility_model_params, topology, bdt)
 
     def solve(self, total_timesteps=100):
         """

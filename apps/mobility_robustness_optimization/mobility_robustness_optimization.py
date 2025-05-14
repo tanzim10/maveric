@@ -86,7 +86,6 @@ class MobilityRobustnessOptimization(ABC):
 
             # update if bayesian digital twins exist already
             if self.bayesian_digital_twins:
-                # ? Do we need to use logger instead of print?
                 print("Updating existing Bayesian Digital Twins with new data.")
 
                 for cell_id, df in prepared_data.items():
