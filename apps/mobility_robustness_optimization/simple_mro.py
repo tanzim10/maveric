@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,9 +23,9 @@ class SimpleMRO(MobilityRobustnessOptimization):
 
     def __init__(
         self,
-        mobility_model_params: dict[str, dict],
+        mobility_model_params: Dict[str, Dict[str, Any]],
         topology: pd.DataFrame,
-        bdt: Optional[dict[str, BayesianDigitalTwin]] = None,
+        bdt: Optional[Dict[str, BayesianDigitalTwin]] = None,
     ):
         super().__init__(mobility_model_params, topology, bdt)
 
