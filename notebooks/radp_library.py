@@ -15,6 +15,7 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import rasterio.features
 from dotenv import load_dotenv
 from rasterio.transform import Affine
@@ -24,7 +25,7 @@ from radp.digital_twin.mobility.mobility import gauss_markov
 from radp.digital_twin.mobility.ue_tracks import UETracksGenerator
 from radp.digital_twin.mobility.ue_tracks_params import UETracksGenerationParams
 from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin, NormMethod
-from radp.digital_twin.utils.constants import TXPWR_DBM
+from radp.digital_twin.utils.constants import RLF_THRESHOLD, TXPWR_DBM
 from radp.digital_twin.utils.gis_tools import GISTools
 
 Boundary = Union[geometry.Polygon, geometry.MultiPolygon]
@@ -1195,7 +1196,7 @@ def mro_plot_scatter(df: pd.DataFrame, topology: pd.DataFrame):
     # Plot UEs from df without labels but with the same color coding
     for _, row in df.iterrows():
         color = color_map.get(row["cell_id"], "black")  # Default to black if unknown cell_id
-        if row["sinr_db"] < -2.9:  # REMOVE COMMENT WHEN sinr_db IS FIXED
+        if row["sinr_db"] < RLF_THRESHOLD:  # REMOVE COMMENT WHEN sinr_db IS FIXED
             color = "grey"  # Change to grey if sinr_db < 2
 
         plt.scatter(row["loc_x"], row["loc_y"], color=color)
@@ -1360,3 +1361,121 @@ def add_cell_info(new_data_with_rx_data: pd.DataFrame, topology: pd.DataFrame) -
     )
 
     return new_data_topology_merged
+
+
+def plot_sinr_db_by_ue(df, df2, ue_id):
+    """
+    Plots SINR (in dB) over ticks for a specific ue_id.
+
+    - Solid bold line: Connected cell_id (from df), color-coded.
+    - Dotted lines: All cell_id sinr_db values from df2 for context.
+    - RLF events: Drop to bottom with bold black line.
+    - RLF_THRESHOLD: Horizontal dashed line.
+
+    Parameters:
+    df (pd.DataFrame): Connected cell data: 'ue_id', 'tick', 'sinr_db', 'cell_id' (or 'RLF').
+    df2 (pd.DataFrame): All candidate cell data: 'ue_id', 'tick', 'cell_id', 'sinr_db'.
+    topology (pd.DataFrame): Not used.
+    ue_id (int): UE to plot.
+    """
+    ue_df = df[df["ue_id"] == ue_id].sort_values("tick")
+    ue_df2 = df2[df2["ue_id"] == ue_id].sort_values("tick")
+
+    if ue_df.empty or ue_df2.empty:
+        print(f"No data found for ue_id {ue_id}.")
+        return
+
+    # Base color map
+    base_colors = {1.0: "red", 2.0: "green", 3.0: "blue"}
+
+    # Get all unique cell_ids (excluding RLF) for dynamic coloring
+    all_cell_ids = pd.concat([ue_df2["cell_id"], ue_df[ue_df["cell_id"] != "RLF"]["cell_id"]]).unique()
+    missing_ids = [cid for cid in all_cell_ids if cid not in base_colors]
+
+    # Generate extra colors from colormap if needed
+    extra_colors = cm.get_cmap("tab10", len(missing_ids))
+    dynamic_colors = {cid: extra_colors(i) for i, cid in enumerate(missing_ids)}
+
+    # Merge base + dynamic maps
+    full_color_map = {**base_colors, **dynamic_colors}
+
+    # Drop value for RLF plotting
+    min_sinr = min(ue_df2["sinr_db"].min(), ue_df[ue_df["cell_id"] != "RLF"]["sinr_db"].min())
+    drop_value = min_sinr - 5
+
+    plt.figure(figsize=(12, 6))
+
+    # --- Plot all available cell sinrs (df2) as dotted lines ---
+    for cell_id, group in ue_df2.groupby("cell_id"):
+        plt.plot(
+            group["tick"],
+            group["sinr_db"],
+            linestyle=":",
+            color=full_color_map.get(cell_id, "gray"),
+            label=f"cell_id {cell_id} (available)",
+            alpha=0.5,
+        )
+
+    # --- Plot connected segments (df) ---
+    ue_df["cell_id_shifted"] = ue_df["cell_id"].shift()
+    ue_df["segment"] = (ue_df["cell_id"] != ue_df["cell_id_shifted"]).cumsum()
+
+    for _, segment_df in ue_df.groupby("segment"):
+        cell = segment_df["cell_id"].iloc[0]
+        if cell == "RLF":
+            plt.plot(
+                segment_df["tick"],
+                [drop_value] * len(segment_df),
+                color="black",
+                linestyle="-",
+                linewidth=3,
+                label="RLF",
+            )
+        else:
+            plt.plot(
+                segment_df["tick"],
+                segment_df["sinr_db"],
+                color=full_color_map.get(cell, "gray"),
+                linestyle="-",
+                linewidth=3,
+                label=f"cell_id {cell} (connected)",
+            )
+
+    # --- Plot RLF threshold ---
+    plt.axhline(y=RLF_THRESHOLD, color="black", linestyle="--", linewidth=2, label="RLF_THRESHOLD")
+
+    # --- Decorate ---
+    plt.title(f"SINR over Time for UE ID {ue_id}")
+    plt.xlabel("Tick")
+    plt.ylabel("SINR (dB)")
+    plt.grid(True)
+    plt.legend(title="Legend", bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.tight_layout()
+    plt.show()
+
+
+def mro_score_3d_plot(df):
+    """
+    Create an interactive 3D scatter plot using Plotly.
+
+    Parameters:
+    - df (pd.DataFrame): A DataFrame with columns ['hyst', 'ttt', 'score']
+    """
+    # Validate input
+    required_cols = {"hyst", "ttt", "score"}
+    if not required_cols.issubset(df.columns):
+        raise ValueError(f"DataFrame must contain columns: {required_cols}")
+
+    # Create plot
+    fig = px.scatter_3d(
+        df,
+        x="ttt",
+        y="hyst",
+        z="score",
+        color="score",
+        color_continuous_scale="Viridis",
+        title="Interactive 3D Plot: ttt vs hyst vs score",
+    )
+    fig.update_traces(marker=dict(size=5))
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=30))
+    fig.show()
