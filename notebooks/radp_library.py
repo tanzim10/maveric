@@ -39,12 +39,15 @@ FFMPEG_PATH = os.environ.get("FFMPEG_PATH", None)
 
 def _kml_obj_to_string(kml_obj: fastkml.KML) -> bytes:
     kml_str = kml_obj.to_string(prettyprint=False).replace("kml:", "")
-
+    """
+    Converts a FastKML object to its string representation.
+    @return str: string representation of the KML object
+    """
     # Encode to 'utf-8' to eliminate unicode code points
     return kml_str.encode()
 
 
-def write_kml_as_kmz_file(kml_obj: fastkml.KML, kmz_filename: str) -> None:
+def write_kml_as_kmz_file(kml_obj: fastkml.KML, kmz_filename: str) -> None:    
     """
     Writes a FastKML object as a KMZ file.
     @param kml_obj: a FastKML object
@@ -60,6 +63,12 @@ def write_kml_as_kmz_file(kml_obj: fastkml.KML, kmz_filename: str) -> None:
 class ShapesKMLWriter(object):
     @classmethod
     def _doc_name(cls, kmz_name: str) -> str:
+        """
+        Extracts the document name from a given KMZ file path.
+        @params kmz_name: the file path of the KMZ file.
+        @returns: the name of the document without the file extension.
+        """
+        
         doc_name = os.path.basename(kmz_name)
         return os.path.splitext(doc_name)[0]
 
@@ -108,6 +117,15 @@ class ShapesKMLWriter(object):
         styles: Optional[List[fastkml.Style]] = None,
         desc: Optional[str] = None,
     ) -> None:
+        """
+        Add a geometric shape to a KML folder or document.
+        @param folder: The KML folder or document to which the shape will be added.
+        @param shape: The geometric shape to add, represented as a BaseGeometry object.
+        @param name: The name of the placemark representing the shape.
+        @param styles: Optional list of styles to apply to the placemark.
+        @param desc: Optional description of the placemark. Defaults to the value of `name` if not provided.
+        @returns: None.
+        """
         if desc is None:
             desc = name
         shape_placemark = fastkml.Placemark(ns=KML_NS, name=name, description=desc, styles=styles)
@@ -212,10 +230,12 @@ def get_percell_data(
     invalid_value: float = -500.0,
     seed: int = 0,
 ) -> Tuple[List[pd.DataFrame], List[pd.DataFrame]]:
-    """Prediction dataframe cleanup"""
+    """
+    Prediction dataframe cleanup
+    Dataframe should contain ['cell_id', 'log_distance', 'relative_bearing', 'cell_rxpwr_dbm'] cloumns.
+    """
     data_out = []
     data_stats = []
-
     data_in_sampled = data_in
 
     data_in_sampled.columns = [col.replace("_1", "") if col.endswith("_1") else col for col in data_in_sampled.columns]
@@ -242,8 +262,9 @@ def get_percell_data(
     return data_out, data_stats
 
 
-def y_to_latitude(lower_bound, y, zoom_factor, tile_pixels=256):
-    """Convert a y tile coordinate to a latitude coordinate.
+def y_to_latitude(lower_bound: bool, y: float, zoom_factor: int, tile_pixels: int = 256) -> float:
+    """
+    Convert a y tile coordinate to a latitude coordinate.
 
     Arguments:
         lower_bound: A bool whether to use the lower edge of the tile.
@@ -252,7 +273,7 @@ def y_to_latitude(lower_bound, y, zoom_factor, tile_pixels=256):
 
     Returns:
         Degrees latitude for either the upper or lower edge of the tile.
-    """
+    """ 
     if lower_bound:
         y = y + 1
     yt = (y * 1.0) / zoom_factor
@@ -263,7 +284,7 @@ def y_to_latitude(lower_bound, y, zoom_factor, tile_pixels=256):
     return -latitude_degrees
 
 
-def bing_tile_to_center(x, y, level, tile_pixels=256):
+def bing_tile_to_center(x: float, y: float, level: int, tile_pixels: int =256) -> float:
     """Get the center coordinate as [latitude, longitude]
     for a given tile.
 
@@ -286,14 +307,21 @@ def bing_tile_to_center(x, y, level, tile_pixels=256):
     return out
 
 
-def bing_tile_to_center_df_row(row, level):
+def bing_tile_to_center_df_row(row: int , level: int) -> int:
+    """
+    Convert Bing tile coordinates in a DataFrame row to their center coordinates.
+    @param row: A DataFrame row containing Bing tile coordinates with attributes `loc_x` and `loc_y`.
+    @param level: The zoom level of the Bing tile.
+    @returns: The modified DataFrame row with updated `loc_x` and `loc_y` values representing the center coordinates.
+    """
+    
     y, x = bing_tile_to_center(row.loc_x, row.loc_y, level)
     row.loc_x = x
     row.loc_y = y
     return row
 
 
-def longitude_to_world_pixel(longitude, zoom_factor, tile_pixels=256):
+def longitude_to_world_pixel(longitude: float, zoom_factor: int, tile_pixels: int = 256) -> float:
     """Convert degrees longitude to world pixel coordinates.
 
     World pixel coordinates span the whole range of longitude
@@ -314,7 +342,7 @@ def longitude_to_world_pixel(longitude, zoom_factor, tile_pixels=256):
     return pixel_x
 
 
-def latitude_to_world_pixel(latitude, zoom_factor, tile_pixels=256):
+def latitude_to_world_pixel(latitude: float, zoom_factor: int, tile_pixels: int = 256) -> float:
     """Convert degrees latitude to world pixel coordinates.
 
     World pixel coordinates span the whole range of latitude
@@ -337,7 +365,7 @@ def latitude_to_world_pixel(latitude, zoom_factor, tile_pixels=256):
     return pixel_y
 
 
-def map_clip(val, min_val, max_val):
+def map_clip(val: float, min_val: float, max_val: float) -> float:
     """Clip val to [min_val, max_val].
 
     Arguments:
@@ -351,7 +379,15 @@ def map_clip(val, min_val, max_val):
     return np.max([min_val, np.min([val, max_val])])
 
 
-def lon_lat_to_bing_tile(longitude, latitude, level, tile_pixels=256):
+def lon_lat_to_bing_tile(longitude: float, latitude: float, level: int, tile_pixels: int = 256) -> float:
+    """
+    Convert longitude and latitude to Bing tile coordinates.
+    @param longitude: Longitude of the location in degrees.
+    @param latitude: Latitude of the location in degrees.
+    @param level: Zoom level for the Bing tile.
+    @param tile_pixels: Size of the tile in pixels (default is 256).
+    @returns: (x, y) pair representing the Bing tile coordinates.
+    """
     zoom_factor = 1 << level
     pixel_x = longitude_to_world_pixel(longitude, zoom_factor)
     x = int(map_clip(np.floor(pixel_x / tile_pixels), 0, tile_pixels * zoom_factor - 1))
@@ -360,7 +396,14 @@ def lon_lat_to_bing_tile(longitude, latitude, level, tile_pixels=256):
     return x, y
 
 
-def lon_lat_to_bing_tile_df_row(row, level):
+def lon_lat_to_bing_tile_df_row(row: int, level: int) -> int:
+    """
+    Convert longitude and latitude in a DataFrame row to Bing tile coordinates.
+    @param row: A DataFrame row containing 'loc_x' (longitude) and 'loc_y' (latitude) attributes.
+    @param level: The zoom level for the Bing tile conversion.
+    @returns: The modified DataFrame row with 'loc_x' and 'loc_y' updated to Bing tile coordinates.
+    """
+
     x, y = lon_lat_to_bing_tile(row.loc_x, row.loc_y, level)
     row.loc_x = x
     row.loc_y = y
@@ -368,10 +411,24 @@ def lon_lat_to_bing_tile_df_row(row, level):
 
 
 def get_lonlat_from_xy_idxs(xy: np.ndarray, lower_left: Tuple[float, float]) -> np.ndarray:
+    """
+    Convert x and y indices to longitude and latitude coordinates.
+    @param xy: A numpy array of x and y indices.
+    @param lower_left: A tuple representing the longitude and latitude of the lower-left corner.
+    @returns: A numpy array of longitude and latitude coordinates.
+    """
     return xy * SRTM_STEP + lower_left
 
 
-def find_closest(data_df, lat, lon):
+def find_closest(data_df: pd.DataFrame, lat: float, lon: float) -> Optional[int]:
+    """
+    Find the closest point in a DataFrame to a given latitude and longitude.
+
+    @param data_df: A pandas DataFrame containing location data with columns 'loc_y' (latitude) and 'loc_x' (longitude).
+    @param lat: Latitude of the target point.
+    @param lon: Longitude of the target point.
+    @returns: The index of the closest point if the minimum distance is less than 100, otherwise None.
+    """
     dist = data_df.apply(lambda row: GISTools.dist((row.loc_y, row.loc_x), (lat, lon)), axis=1)
     if dist.min() < 100:
         return dist.idxmin()
@@ -380,10 +437,18 @@ def find_closest(data_df, lat, lon):
 
 
 def get_track_samples(
-    data_df,
-    num_UEs,
-    ticks,
-):
+    data_df: pd.DataFrame,
+    num_UEs: int,
+    ticks: int,
+) -> pd.DataFrame:
+    """
+    Generate track samples based on a Gauss-Markov mobility model and map them to the closest points in the given dataset.
+    @param data_df: Input DataFrame containing location data with columns 'loc_x' and 'loc_y'.
+    @param num_UEs: Number of user equipment (UE) tracks to simulate.
+    @param ticks: Number of time steps to simulate for the mobility model.
+    @returns: A DataFrame containing the sampled track points mapped to the closest points in the input dataset.
+    """
+    
     alpha = 0.8
     variance = 0.5
 
@@ -441,6 +506,9 @@ def bdt(
     num_UEs=10,
     ticks=100,
 ):
+    """
+    Train and test Bayesian Digital Twins (BDT) for cellular network data.
+    """
     site_config_path = sim_idx_folders[0] + "/site_config.csv"
     site_config_df = pd.read_csv(f"/{bucket_path}/{sim_data_path}/{site_config_path}")
 
@@ -784,6 +852,9 @@ def animate_predictions(
     filename,
     cmap="PuBuGn",
 ):
+    """"
+    Create an animation visualizing true and predicted RSRP values over geographical coordinates.
+    """
     if not FFMPEG_PATH:
         print("Please provide ffmpeg path to create animation")
         return
@@ -820,6 +891,10 @@ def animate_predictions(
 
     # initialization function: plot the background of each frame
     def init():
+        """
+        Initialize the plotting environment by clearing the current figure and setting up the axes.
+        @returns: A list containing the true RSRP points and predicted RSRP points.
+        """
         plt.clf()
         _init_plt(axs)
         # pred_rsrp_points.set_offsets([])
@@ -827,6 +902,13 @@ def animate_predictions(
 
     # animation function.  This is called sequentially
     def animate(i):
+        """
+        Update the animation frame for visualizing predicted RSRP values.
+        @param i: Index of the current animation frame.
+        @returns: A list containing the scatter plot objects for true RSRP points 
+                  and predicted RSRP points.
+        """
+        
         plt.clf()
         _init_plt(axs)
         pred_rsrp_points = axs[1].scatter(lons, lats, c=pred_rsrp_list[i], cmap=cmap, s=25)
@@ -1082,7 +1164,14 @@ def plot_ue_tracks_on_axis(df: pd.DataFrame, ax, title: str) -> None:
 # Scatter plot of the Cell towers and UE Locations
 
 
-def mro_plot_scatter(df, topology):
+def mro_plot_scatter(df: pd.DataFrame, topology: pd.DataFrame):
+    """
+    Plot a scatter plot of cell towers and UE (User Equipment) locations.
+    @param df: DataFrame containing UE data with columns 'loc_x', 'loc_y', 'cell_id', and 'sinr_db'.
+    @param topology: DataFrame containing cell tower data with columns 'cell_lon', 'cell_lat', and 'cell_id'.
+    @returns: None. Displays a scatter plot with cell towers and UE locations.
+    """
+    
     # Create a figure and axis
     plt.figure(figsize=(10, 8))
 
