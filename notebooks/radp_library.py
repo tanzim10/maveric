@@ -92,6 +92,7 @@ class ShapesKMLWriter(object):
 
         k = fastkml.KML()
         doc = fastkml.Document(ns=KML_NS, name=(name or "Shapes"), description=(desc or ""), styles=styles)
+        doc = fastkml.Document(ns=KML_NS, name=(name or "Shapes"), description=(desc or ""), styles=styles)
         k.append(doc)
 
         return k, doc
@@ -247,6 +248,7 @@ def get_percell_data(
         data_cell_sampled = data_cell_valid.sort_values("cell_rxpwr_dbm", ascending=False).head(
             n=min(n_samples, len(data_cell_valid))
         )
+
     else:
         # get n_samples independent random samples inside training groups
         data_cell_sampled = data_cell_valid.sample(n=min(n_samples, len(data_cell_valid)), random_state=(seed))
@@ -484,6 +486,7 @@ def get_track_samples(
 
     all_track_pts_df = pd.DataFrame(columns=["loc_x", "loc_y"], data=xy_lonlat_ue_tracks)
     all_track_pts_sampled_df = all_track_pts_df.apply(lambda row: find_closest(data_df, row.loc_y, row.loc_x), axis=1)
+
     return data_df.loc[all_track_pts_sampled_df]
 
 
@@ -574,6 +577,7 @@ def bdt(
     for i in range(len(desired_idxs)):
         train_cell_id = idx_cell_id_mapping[i + 1]
         training_data[train_cell_id] = pd.concat([tilt_per_cell_df[i] for tilt_per_cell_df in percell_data_list])
+
         if track_sampling:
             training_data[train_cell_id] = get_track_samples(
                 training_data[train_cell_id],
@@ -603,6 +607,7 @@ def bdt(
         training_data_idx["cell_carrier_freq_mhz"] = site_config_df[site_config_df["cell_id"] == train_cell_id][
             "cell_carrier_freq_mhz"
         ].values[0]
+
         training_data_idx["log_distance"] = [
             GISTools.get_log_distance(
                 training_data_idx["cell_lat"].values[0],
@@ -647,6 +652,7 @@ def bdt(
         training_data_idx = training_data_idx.drop(
             training_data_idx[
                 (training_data_idx["cell_rxpwr_dbm"] < filter_out_samples_dbm_threshold)
+                & (training_data_idx["log_distance"] > np.log(1000 * filter_out_samples_kms_threshold))
                 & (training_data_idx["log_distance"] > np.log(1000 * filter_out_samples_kms_threshold))
             ].index
         )
@@ -720,6 +726,7 @@ def bdt(
         test_data_idx["cell_carrier_freq_mhz"] = site_config_df[site_config_df["cell_id"] == test_cell_id][
             "cell_carrier_freq_mhz"
         ].values[0]
+
         test_data_idx["log_distance"] = [
             GISTools.get_log_distance(
                 test_data_idx["cell_lat"].values[0],
