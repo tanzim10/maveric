@@ -48,7 +48,7 @@ def _kml_obj_to_string(kml_obj: fastkml.KML) -> bytes:
     return kml_str.encode()
 
 
-def write_kml_as_kmz_file(kml_obj: fastkml.KML, kmz_filename: str) -> None:    
+def write_kml_as_kmz_file(kml_obj: fastkml.KML, kmz_filename: str) -> None:
     """
     Writes a FastKML object as a KMZ file.
     @param kml_obj: a FastKML object
@@ -69,7 +69,7 @@ class ShapesKMLWriter(object):
         @params kmz_name: the file path of the KMZ file.
         @returns: the name of the document without the file extension.
         """
-        
+
         doc_name = os.path.basename(kmz_name)
         return os.path.splitext(doc_name)[0]
 
@@ -274,7 +274,7 @@ def y_to_latitude(lower_bound: bool, y: float, zoom_factor: int, tile_pixels: in
 
     Returns:
         Degrees latitude for either the upper or lower edge of the tile.
-    """ 
+    """
     if lower_bound:
         y = y + 1
     yt = (y * 1.0) / zoom_factor
@@ -285,7 +285,7 @@ def y_to_latitude(lower_bound: bool, y: float, zoom_factor: int, tile_pixels: in
     return -latitude_degrees
 
 
-def bing_tile_to_center(x: float, y: float, level: int, tile_pixels: int =256) -> float:
+def bing_tile_to_center(x: float, y: float, level: int, tile_pixels: int = 256) -> float:
     """Get the center coordinate as [latitude, longitude]
     for a given tile.
 
@@ -308,14 +308,14 @@ def bing_tile_to_center(x: float, y: float, level: int, tile_pixels: int =256) -
     return out
 
 
-def bing_tile_to_center_df_row(row: int , level: int) -> int:
+def bing_tile_to_center_df_row(row: int, level: int) -> int:
     """
     Convert Bing tile coordinates in a DataFrame row to their center coordinates.
     @param row: A DataFrame row containing Bing tile coordinates with attributes `loc_x` and `loc_y`.
     @param level: The zoom level of the Bing tile.
     @returns: The modified DataFrame row with updated `loc_x` and `loc_y` values representing the center coordinates.
     """
-    
+
     y, x = bing_tile_to_center(row.loc_x, row.loc_y, level)
     row.loc_x = x
     row.loc_y = y
@@ -443,13 +443,15 @@ def get_track_samples(
     ticks: int,
 ) -> pd.DataFrame:
     """
-    Generate track samples based on a Gauss-Markov mobility model and map them to the closest points in the given dataset.
+    Generate track samples based on a Gauss-Markov mobility model
+    and map them to the closest points in the given dataset.
+
     @param data_df: Input DataFrame containing location data with columns 'loc_x' and 'loc_y'.
     @param num_UEs: Number of user equipment (UE) tracks to simulate.
     @param ticks: Number of time steps to simulate for the mobility model.
     @returns: A DataFrame containing the sampled track points mapped to the closest points in the input dataset.
     """
-    
+
     alpha = 0.8
     variance = 0.5
 
@@ -853,7 +855,7 @@ def animate_predictions(
     filename,
     cmap="PuBuGn",
 ):
-    """"
+    """ "
     Create an animation visualizing true and predicted RSRP values over geographical coordinates.
     """
     if not FFMPEG_PATH:
@@ -906,10 +908,10 @@ def animate_predictions(
         """
         Update the animation frame for visualizing predicted RSRP values.
         @param i: Index of the current animation frame.
-        @returns: A list containing the scatter plot objects for true RSRP points 
+        @returns: A list containing the scatter plot objects for true RSRP points
                   and predicted RSRP points.
         """
-        
+
         plt.clf()
         _init_plt(axs)
         pred_rsrp_points = axs[1].scatter(lons, lats, c=pred_rsrp_list[i], cmap=cmap, s=25)
@@ -1165,14 +1167,14 @@ def plot_ue_tracks_on_axis(df: pd.DataFrame, ax, title: str) -> None:
 # Scatter plot of the Cell towers and UE Locations
 
 
-def mro_plot_scatter(df: pd.DataFrame, topology: pd.DataFrame):
+def mro_plot_scatter(df: pd.DataFrame, topology: pd.DataFrame) -> None:
     """
     Plot a scatter plot of cell towers and UE (User Equipment) locations.
     @param df: DataFrame containing UE data with columns 'loc_x', 'loc_y', 'cell_id', and 'sinr_db'.
     @param topology: DataFrame containing cell tower data with columns 'cell_lon', 'cell_lat', and 'cell_id'.
     @returns: None. Displays a scatter plot with cell towers and UE locations.
     """
-    
+
     # Create a figure and axis
     plt.figure(figsize=(10, 8))
 
@@ -1215,7 +1217,7 @@ def mro_plot_scatter(df: pd.DataFrame, topology: pd.DataFrame):
     plt.show()
 
 
-def get_ues_cells_cartesian_df(data, topology):
+def get_ues_cells_cartesian_df(data: pd.DataFrame, topology: pd.DataFrame) -> pd.DataFrame:
     """returns a cartesian dataframe of UE and cell data"""
     if topology["cell_id"].dtype == object:
         topology["cell_id"] = topology["cell_id"].str.replace("cell_", "").astype(int)
@@ -1229,7 +1231,7 @@ def get_ues_cells_cartesian_df(data, topology):
     return cartesian_df
 
 
-def calc_log_distance(cartesian_df):
+def calc_log_distance(cartesian_df: pd.DataFrame) -> pd.DataFrame:
     """adds a log distance column to the cartesian dataframe based on the lat/lon of the UE and cell"""
     cartesian_df["log_distance"] = cartesian_df.apply(
         lambda row: GISTools.get_log_distance(row["latitude"], row["longitude"], row["cell_lat"], row["cell_lon"]),
@@ -1238,7 +1240,7 @@ def calc_log_distance(cartesian_df):
     return cartesian_df
 
 
-def calc_rx_power(cartesian_df):
+def calc_rx_power(cartesian_df: pd.DataFrame) -> pd.DataFrame:
     """adds a cell_rxpwr_dbm column to the cartesian dataframe,
     based on the log distance and cell frequency using fspl"""
     cartesian_df["cell_rxpwr_dbm"] = cartesian_df.apply(
@@ -1248,7 +1250,7 @@ def calc_rx_power(cartesian_df):
     return cartesian_df
 
 
-def calc_relative_bearing(cartesian_df):
+def calc_relative_bearing(cartesian_df: pd.DataFrame) -> pd.DataFrame:
     """adds a relative_bearing column to the cartesian dataframe,
     based on the lat/lon of the UE and cell and az_deg of the cell"""
     cartesian_df["relative_bearing"] = cartesian_df.apply(
@@ -1264,7 +1266,7 @@ def calc_relative_bearing(cartesian_df):
     return cartesian_df
 
 
-def preprocess_ue_data(data, topology):
+def preprocess_ue_data(data: pd.DataFrame, topology: pd.DataFrame) -> pd.DataFrame:
     """creates a cartesian dataframe of UE and cell data, adds log distance and rx power columns"""
     cartesian_df = get_ues_cells_cartesian_df(data, topology)
     cartesian_df = calc_log_distance(cartesian_df)
@@ -1363,7 +1365,7 @@ def add_cell_info(new_data_with_rx_data: pd.DataFrame, topology: pd.DataFrame) -
     return new_data_topology_merged
 
 
-def plot_sinr_db_by_ue(df, df2, ue_id):
+def plot_sinr_db_by_ue(df: pd.DataFrame, df2: pd.DataFrame, ue_id: int) -> None:
     """
     Plots SINR (in dB) over ticks for a specific ue_id.
 
@@ -1454,7 +1456,7 @@ def plot_sinr_db_by_ue(df, df2, ue_id):
     plt.show()
 
 
-def mro_score_3d_plot(df):
+def mro_score_3d_plot(df: pd.DataFrame) -> None:
     """
     Create an interactive 3D scatter plot using Plotly.
 
