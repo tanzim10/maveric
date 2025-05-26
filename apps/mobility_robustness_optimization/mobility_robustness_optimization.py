@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import torch
 import numpy as np
 import pandas as pd
 from gpytorch.kernels import RBFKernel, ScaleKernel
@@ -40,6 +41,7 @@ class MobilityRobustnessOptimization(ABC):
         topology: pd.DataFrame,
         bdt: Optional[Dict[str, BayesianDigitalTwin]] = None,
     ):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.topology = topology
         self.bayesian_digital_twins = bdt if bdt is not None else {}
         self.mobility_model_params = mobility_model_params
@@ -186,6 +188,8 @@ class MobilityRobustnessOptimization(ABC):
                 y_columns=["cell_rxpwr_dbm"],
                 norm_method=NormMethod.MINMAX,
             )
+            
+            bayesian_digital_twins[train_cell_id].model = bayesian_digital_twins[train_cell_id].model.to(self.device)
 
             self.bayesian_digital_twins[train_cell_id] = bayesian_digital_twins[train_cell_id]
 
@@ -218,12 +222,14 @@ class MobilityRobustnessOptimization(ABC):
         twin = self.bayesian_digital_twins[cell_id]
 
         # Reconfigure the kernel to include scale + RBF
-        twin.model.covar_module = ScaleKernel(RBFKernel())
+        twin.model.covar_module = ScaleKernel(RBFKernel()).to(self.device)
 
         # Increase observation noise via GaussianLikelihood
         if not hasattr(twin, "likelihood"):
             twin.likelihood = GaussianLikelihood()  # type: ignore
         twin.likelihood.noise = 1e-2  # type: ignore
+        twin.likelihood = twin.likelihood.to(self.device)
+
 
         # Use an increased jitter context
         with cholesky_jitter(1e-1):
