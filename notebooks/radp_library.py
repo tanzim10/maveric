@@ -516,7 +516,9 @@ def bdt(
     Train and test Bayesian Digital Twins (BDT) for cellular network data.
     """
     site_config_path = sim_idx_folders[0] + "/site_config.csv"
-    site_config_df = pd.read_csv(f"/{bucket_path}/{sim_data_path}/{site_config_path}")
+    combined_path = os.path.join(bucket_path, sim_data_path, site_config_path)
+    site_config_df = pd.read_csv(combined_path)
+    # site_config_df = pd.read_csv(f"/{bucket_path}/{sim_data_path}/{site_config_path}")
 
     n_sample_train = (p_train * 0.01 * site_config_df["nRx"]).astype(int)
     n_sample_test = (p_test * 0.01 * site_config_df["nRx"]).astype(int)
@@ -541,12 +543,15 @@ def bdt(
             continue
         sim_idx_folder = sim_idx_folders[idx]
         logging.info(f"loading training set : {sim_idx_folder}")
-        save_path = f"/{bucket_path}/{sim_data_path}/{sim_idx_folder}"
+        
+        # save_path = f"/{bucket_path}/{sim_data_path}/{sim_idx_folder}"
+        
+        save_path = os.path.join(bucket_path, sim_data_path, sim_idx_folder)
         tilt_df = pd.read_csv(f"{save_path}/full_data.csv")
-
+        
         # drop redundant columns
-        clean_tilt_df = tilt_df.drop(columns=["cell_rxpwr_dbm", "cell_el_deg"])
-
+        # clean_tilt_df = tilt_df.drop(columns=["cell_rxpwr_dbm", "cell_el_deg"])
+        clean_tilt_df = tilt_df.copy()
         # get data by groups
         tilt_per_cell_df = [x for _, x in clean_tilt_df.groupby("cell_id")]
 
@@ -648,14 +653,14 @@ def bdt(
     bayesian_digital_twins = {}
     loss_vs_iters = []
     for train_cell_id, training_data_idx in training_data.items():
-        # filter out "too far" readings that are "too weak"
-        training_data_idx = training_data_idx.drop(
-            training_data_idx[
-                (training_data_idx["cell_rxpwr_dbm"] < filter_out_samples_dbm_threshold)
-                & (training_data_idx["log_distance"] > np.log(1000 * filter_out_samples_kms_threshold))
-                & (training_data_idx["log_distance"] > np.log(1000 * filter_out_samples_kms_threshold))
-            ].index
-        )
+        # # filter out "too far" readings that are "too weak"
+        # training_data_idx = training_data_idx.drop(
+        #     training_data_idx[
+        #         (training_data_idx["cell_rxpwr_dbm"] < filter_out_samples_dbm_threshold)
+        #         & (training_data_idx["log_distance"] > np.log(1000 * filter_out_samples_kms_threshold))
+        #         & (training_data_idx["log_distance"] > np.log(1000 * filter_out_samples_kms_threshold))
+        #     ].index
+        # )
         if plot_loss_vs_iter:
             axs[1].set_aspect("equal", "box")
             axs[1].set_xticks([])
@@ -669,6 +674,10 @@ def bdt(
             )
         logging.info(f"training cell =  : {train_cell_id}")
 
+        if training_data_idx.empty:
+            logging.warning(f"[SKIP] train_cell_id={train_cell_id} has no usable training samples after filtering.")
+            continue
+        
         bayesian_digital_twins[train_cell_id] = BayesianDigitalTwin(
             data_in=[training_data_idx],
             x_columns=["log_distance", "relative_bearing", "cell_el_deg"],
@@ -685,11 +694,12 @@ def bdt(
 
     sim_idx_folder = sim_idx_folders[test_idx]
     logging.info(f"loading for testing : {sim_idx_folder}")
-    save_path = f"/{bucket_path}/{sim_data_path}/{sim_idx_folder}"
+    # save_path = f"/{bucket_path}/{sim_data_path}/{sim_idx_folder}"
+    save_path = os.path.join(bucket_path, sim_data_path, sim_idx_folder)
     tilt_test_df = pd.read_csv(f"{save_path}/full_data.csv")
 
     # drop redundant columns
-    tilt_test_df = tilt_test_df.drop(columns=["cell_rxpwr_dbm", "cell_el_deg"])
+    # tilt_test_df = tilt_test_df.drop(columns=["cell_rxpwr_dbm", "cell_el_deg"])
 
     # get data by groups
     tilt_test_per_cell_df_list = [x for _, x in tilt_test_df.groupby("cell_id")]
