@@ -433,6 +433,7 @@ class MobilityRobustnessOptimization(ABC):
         df = self._add_sinr_column(df)
         return df
 
+    # TODO: will use the utils version
     def _add_sinr_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds a 'sinr_db' column to the input DataFrame, computing the Signal-to-Interference-plus-Noise Ratio (SINR)
