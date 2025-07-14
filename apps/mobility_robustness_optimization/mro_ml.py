@@ -23,7 +23,7 @@ class BayesianMRO(MobilityRobustnessOptimization):
         mobility_model_params: Dict[str, Dict[str, Any]],
         topology: pd.DataFrame,
         bdt: Optional[Dict[str, BayesianDigitalTwin]] = None,
-        model_type: str = "xgboost",
+        model_type: str = "gpr",
     ):
         super().__init__(mobility_model_params, topology, bdt)
         self.model_type = model_type
