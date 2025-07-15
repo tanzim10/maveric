@@ -48,14 +48,12 @@ def perform_attachment(
     """
 
     # initiate a dictionary to store power-by-layer dictionaries on a per-pixel basis
-    rx_powers_by_layer_by_loc: Dict[
-        Tuple[float, float], Dict[float, List[Tuple[Any, float]]]
-    ] = defaultdict(lambda: defaultdict(list))
+    rx_powers_by_layer_by_loc: Dict[Tuple[float, float], Dict[float, List[Tuple[Any, float]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
 
     # pull per-cell frequencies for faster lookup
-    cell_id_to_freq = {
-        row.cell_id: row.cell_carrier_freq_mhz for _, row in topology.iterrows()
-    }
+    cell_id_to_freq = {row.cell_id: row.cell_carrier_freq_mhz for _, row in topology.iterrows()}
 
     # iterate over ue_prediction_data, to
     # build rx_powers_by_layer_by_loc map
@@ -70,25 +68,19 @@ def perform_attachment(
             raise Exception("loc_x or loc_y cannot be found in the dataset")
 
         # add (cell_id, rxpower) tuple on a per-row, per-freq basis
-        rx_powers_by_layer_by_loc[(loc_x, loc_y)][cell_carrier_freq_mhz].append(
-            (row.cell_id, row.rxpower_dbm)
-        )
+        rx_powers_by_layer_by_loc[(loc_x, loc_y)][cell_carrier_freq_mhz].append((row.cell_id, row.rxpower_dbm))
 
     # perform cell selection per location
     rf_dataframe_dict = defaultdict(list)
 
     for loc, rx_powers_by_layer in rx_powers_by_layer_by_loc.items():
         # compute strongest server, interference and SINR
-        rsrp_dbm_by_layer, sinr_db_by_layer = get_rsrp_dbm_sinr_db_by_layer(
-            rx_powers_by_layer
-        )
+        rsrp_dbm_by_layer, sinr_db_by_layer = get_rsrp_dbm_sinr_db_by_layer(rx_powers_by_layer)
 
         # pull sinr_db, cell_id and rsrp_dbm based on highest SINR
         max_sinr_db_item = max(sinr_db_by_layer.items(), key=lambda k: k[1][1])
         max_sinr_db_cell_id, max_sinr_db = max_sinr_db_item[1]
-        rsrp_dbm = next(
-            v[1] for v in rsrp_dbm_by_layer.values() if v[0] == max_sinr_db_cell_id
-        )
+        rsrp_dbm = next(v[1] for v in rsrp_dbm_by_layer.values() if v[0] == max_sinr_db_cell_id)
 
         # update rf_dataframe output
         rf_dataframe_dict[constants.LOC_X].append(loc[0])
@@ -133,9 +125,7 @@ def get_rsrp_dbm_sinr_db_by_layer(
     return rsrp_dbm_by_layer, sinr_db_by_layer
 
 
-def perform_attachment_hyst_ttt(
-    ue_data: pd.DataFrame, hyst: float, ttt: int, rlf_threshold: float
-) -> pd.DataFrame:
+def perform_attachment_hyst_ttt(ue_data: pd.DataFrame, hyst: float, ttt: int, rlf_threshold: float) -> pd.DataFrame:
     """
     Performs UE-to-cell attachment across all ticks in the simulation.
     Initially, when insufficient history is available, the UE is naively attached to the strongest available cell.
@@ -160,12 +150,9 @@ def perform_attachment_hyst_ttt(
         tick_dataframes[tick] = ue_data[ue_data["tick"] == tick].copy()
 
     cell_attached_df = pd.DataFrame()
-    for tick in range(len(tick_dataframes)):
+    for tick in sorted(tick_dataframes.keys()):
         if ttt - 1 > len(strongest_server_history):
-            (
-                strongest_server_history,
-                current_attachment,
-            ) = _perform_attachment_hyst_ttt_per_tick(
+            (strongest_server_history, current_attachment,) = _perform_attachment_hyst_ttt_per_tick(
                 tick_dataframes[tick],
                 strongest_server_history,
                 current_attachment,
@@ -174,10 +161,7 @@ def perform_attachment_hyst_ttt(
                 use_strongest_server=True,
             )
         else:
-            (
-                strongest_server_history,
-                current_attachment,
-            ) = _perform_attachment_hyst_ttt_per_tick(
+            (strongest_server_history, current_attachment,) = _perform_attachment_hyst_ttt_per_tick(
                 tick_dataframes[tick],
                 strongest_server_history,
                 current_attachment,
@@ -185,9 +169,7 @@ def perform_attachment_hyst_ttt(
                 hyst,
                 use_strongest_server=False,
             )
-        current_attachment = _check_rlf_threshold(
-            current_attachment, tick_dataframes[tick], rlf_threshold
-        )
+        current_attachment = _check_rlf_threshold(current_attachment, tick_dataframes[tick], rlf_threshold)
         cell_attached_df = pd.concat([cell_attached_df, current_attachment])
 
     return cell_attached_df
@@ -230,18 +212,24 @@ def _perform_attachment_hyst_ttt_per_tick(
     use_strongest_server: bool = False,
 ) -> Tuple[List[pd.DataFrame], pd.DataFrame]:
     """
-    Determines and updates the cell selction for each user for a given tick using hysteresis and time-to-trigger (TTT) rules.
-    This function either attaches the UE to the strongest server or evaluates attachment changes based on hyst
-    and TTT rules. The attachment decisions are updated, and the history of the strongest server is maintained across ticks.
+    Determines and updates the cell selction for each user for a given tick using
+    hysteresis and time-to-trigger (TTT) rules.
+    This function either attaches the UE to the strongest server or evaluates
+    attachment changes based on hyst
+    and TTT rules. The attachment decisions are updated, and the history of the strongest server
+    is maintained across ticks.
 
     Parameters:
         ue_data_for_current_tick (pd.DataFrame): UE data for the current tick containing measurements like
                                                   `cell_rxpower_dbm` for each UE.
         strongest_server_history (List[pd.DataFrame]): A history of the strongest server attachments for previous ticks.
-        past_attachment (pd.DataFrame): Attachment state of the UE from the previous tick.
+        past_attachment (pd.DataFrame): Attachment state of
+        the UE from the previous tick.
         ttt (int): Time-to-trigger (TTT) threshold for attachment decision, in number of ticks.
         hyst (float): Hysteresis threshold in dB for attachment decision.
-        use_strongest_server (bool): If True, forces attachment to the strongest server; otherwise, follows TTT and hyst rules.
+        use_strongest_server (bool): If True, forces attachment to the strongest server;
+        otherwise, follows TTT and hyst rules.
+
 
     Returns:
         Tuple[List[pd.DataFrame], pd.DataFrame]:
@@ -252,9 +240,7 @@ def _perform_attachment_hyst_ttt_per_tick(
         ue_data_for_current_tick.groupby("ue_id")["cell_rxpower_dbm"].idxmax()
     ]
     if len(strongest_server_history) >= ttt:
-        raise AssertionError(
-            "Error: Strongest_Server_History needs to be Less Than TTT!"
-        )
+        raise AssertionError("Error: Strongest_Server_History needs to be Less Than TTT!")
     else:
         if use_strongest_server:
             current_attachment = current_strongest
@@ -262,13 +248,9 @@ def _perform_attachment_hyst_ttt_per_tick(
 
         else:
             if ttt == len(strongest_server_history) + 1:
-                current_strongest = _check_hyst(
-                    ue_data_for_current_tick, past_attachment, hyst
-                )
+                current_strongest = _check_hyst(ue_data_for_current_tick, past_attachment, hyst)
                 strongest_server_history.append(current_strongest)
-                current_attachment = _check_ttt(
-                    strongest_server_history, ue_data_for_current_tick, past_attachment
-                )
+                current_attachment = _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachment)
                 current_attachment = _check_hyst_in_current_tick(
                     ue_data_for_current_tick, current_attachment, past_attachment, hyst
                 )
@@ -284,9 +266,7 @@ def _perform_attachment_hyst_ttt_per_tick(
     return strongest_server_history, current_attachment
 
 
-def _check_hyst(
-    ue_data_for_current_tick: pd.DataFrame, past_attachment: pd.DataFrame, hyst: float
-) -> pd.DataFrame:
+def _check_hyst(ue_data_for_current_tick: pd.DataFrame, past_attachment: pd.DataFrame, hyst: float) -> pd.DataFrame:
     """
     Evaluates if a newly strongest cell is significantly better than the previously attached cell
     by applying the hysteresis (hyst) margin.
@@ -295,7 +275,8 @@ def _check_hyst(
     (i.e., current_rxpower - past_rxpower ≥ hyst) to prevent unnecessary handovers.
 
     Parameters:
-        ue_data_for_current_tick (pd.DataFrame): Current tick signal data containing 'ue_id', 'cell_id', and 'cell_rxpower_dbm'.
+        ue_data_for_current_tick (pd.DataFrame): Current tick signal data containing
+        'ue_id', 'cell_id', and 'cell_rxpower_dbm'.
         past_attachment (pd.DataFrame): Previous attachment decisions per UE.
         hyst (float): Hysteresis threshold to validate signal superiority.
 
@@ -345,9 +326,7 @@ def _check_hyst(
     for ue_id, group in merged_df.groupby("ue_id"):
         # Initialize variables to track the best row for the ue_id
         best_row = None
-        best_power = (
-            -999
-        )  # Start with an arbitrarily low value for comparison (can also use NaN)
+        best_power = -999  # Start with an arbitrarily low value for comparison (can also use NaN)
 
         # Iterate through each row (cell_id) for the current ue_id
         for _, row in group.iterrows():
@@ -356,8 +335,7 @@ def _check_hyst(
 
             # Retrieve the past data for the previous cell_id of this ue_id
             past_data = ue_data_for_current_tick[
-                (ue_data_for_current_tick["ue_id"] == ue_id)
-                & (ue_data_for_current_tick["cell_id"] == past_cell_id)
+                (ue_data_for_current_tick["ue_id"] == ue_id) & (ue_data_for_current_tick["cell_id"] == past_cell_id)
             ]
 
             # If past data exists, get the past power
@@ -404,7 +382,8 @@ def _check_ttt(
     the strongest for the full TTT duration.
 
     Parameters:
-        strongest_server_history (list): List of DataFrames tracking the strongest cell per UE for past ticks (length = TTT - 1).
+        strongest_server_history (list): List of DataFrames tracking the strongest
+        cell per UE for past ticks (length = TTT - 1).
         ue_data_for_current_tick (pd.DataFrame): DataFrame containing current tick’s UE–cell signal data.
         past_attachment (pd.DataFrame): DataFrame with previous UE–cell attachment state.
 
@@ -443,9 +422,7 @@ def _check_ttt(
     # individual UE scope
     for UE in ue_data_for_current_tick["ue_id"].unique():
         # Check consistency for this specific UE
-        history_consistency_check = merged_df[merged_df["ue_id"] == UE][
-            "cell_id"
-        ].nunique()
+        history_consistency_check = merged_df[merged_df["ue_id"] == UE]["cell_id"].nunique()
         consistent_cell_id = merged_df[merged_df["ue_id"] == UE]["cell_id"].unique()[0]
 
         # attach consistent cell or past cell decision
@@ -457,9 +434,7 @@ def _check_ttt(
                 ].iloc[0]
             )
         else:
-            past_cell_id = past_attachment[past_attachment["ue_id"] == UE][
-                "cell_id"
-            ].values[0]
+            past_cell_id = past_attachment[past_attachment["ue_id"] == UE]["cell_id"].values[0]
             # logger.info("%s", past_cell_id)
             if past_cell_id == "RLF":
                 # Select the cell with the highest cell_rxpower_dbm for this UE
@@ -482,9 +457,7 @@ def _check_ttt(
     return current_attachment
 
 
-def _check_rlf_threshold(
-    df: pd.DataFrame, current_tick_df: pd.DataFrame, rlf_threshold: float
-) -> pd.DataFrame:
+def _check_rlf_threshold(df: pd.DataFrame, current_tick_df: pd.DataFrame, rlf_threshold: float) -> pd.DataFrame:
     """
     Updates the dataframe based on the SINR threshold and data from `current_tick_df`.
 
@@ -561,9 +534,7 @@ def _check_rlf_threshold(
                     target_idx = target_indices[0]
 
                     # Find all common columns
-                    common_cols = updated_df.columns.intersection(
-                        current_tick_df.columns
-                    )
+                    common_cols = updated_df.columns.intersection(current_tick_df.columns)
 
                     for col in common_cols:
                         try:
@@ -624,9 +595,7 @@ def _check_hyst_in_current_tick(
             "current attachment and past attachment are not consistent. Check their shape, ue_id and cell_id columns."
         )
     elif set(current_attachment["ue_id"]) != set(past_attachment["ue_id"]):
-        raise AssertionError(
-            "current attachment and past attachment have different ue_ids."
-        )
+        raise AssertionError("current attachment and past attachment have different ue_ids.")
     for i, curr in current_attachment.iterrows():
         prev = past_attachment[past_attachment["ue_id"] == curr["ue_id"]].iloc[0]
         # * ignoring if no cell switch for this UE
@@ -642,7 +611,7 @@ def _check_hyst_in_current_tick(
                 (ue_data_for_current_tick["ue_id"] == prev["ue_id"])
                 & (ue_data_for_current_tick["cell_id"] == prev["cell_id"])
             ]["cell_rxpower_dbm"].values[0]
-        except:
+        except IndexError:  # If no previous attachment found in current tick, set to -inf
             prev_attachment_rxpower = -np.inf
         # * hysteresis check & revert if failed
         if curr_attachment_rxpower < prev_attachment_rxpower + hyst:

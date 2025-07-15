@@ -29,7 +29,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
     ):
         super().__init__(mobility_model_params, topology, bdt)
 
-    def solve(self, total_timesteps=100):
+    def solve(self, total_timesteps=100, n_steps=64, batch_size=64):
         """
         Trains a PPO agent to optimize hysteresis and TTT values.
         """
@@ -57,7 +57,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # PPO agent
-        model = PPO("MlpPolicy", env, verbose=2, n_steps=64, batch_size=64, device=device)
+        model = PPO("MlpPolicy", env, verbose=2, n_steps=n_steps, batch_size=batch_size, device=device)
         model.learn(total_timesteps)
 
         # Predict optimal action using trained model
