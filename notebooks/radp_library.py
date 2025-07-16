@@ -1488,3 +1488,86 @@ def mro_score_3d_plot(df: pd.DataFrame) -> None:
     fig.update_traces(marker=dict(size=5))
     fig.update_layout(margin=dict(l=0, r=0, b=0, t=30))
     fig.show()
+
+
+def count_handovers(df):
+    # Initialize counters for NS (Successful Handovers), NF (Radio Link Failures), and no change
+    ns_handover_count = 0
+    nf_handover_count = 0
+    no_change = 0
+
+    # Threshold for considering a Radio Link Failure (RLF)
+    rlf_threshold = RLF_THRESHOLD
+
+    # Track the previous state for each UE
+    ue_previous_state = {}
+
+    # Loop through the dataframe row by row
+    for _, row in df.iterrows():
+        ue_id = row["ue_id"]
+        current_cell_id = row["cell_id"]
+        current_sinr_db = row["sinr_db"]
+
+        # Check if we have previous state for this UE
+        if ue_id in ue_previous_state:
+            previous_cell_id, previous_sinr_db = ue_previous_state[ue_id]
+
+            # Check for cell ID change
+            if previous_cell_id != current_cell_id:
+                # Check if the SINR is above the threshold after a cell change
+                if current_sinr_db >= rlf_threshold:
+                    ns_handover_count += 1  # Successful handover
+                else:
+                    nf_handover_count += 1  # Failed handover due to RLF after change
+            elif previous_sinr_db < rlf_threshold and current_sinr_db >= rlf_threshold:
+                ns_handover_count += 1  # Successful recovery from RLF without cell change
+            elif current_sinr_db < rlf_threshold:
+                nf_handover_count += 1  # Ongoing or new RLF
+            else:
+                no_change += 1  # No significant event
+
+        else:
+            # If first occurrence of UE has SINR below the RLF threshold, consider it as RLF
+            if current_sinr_db < rlf_threshold:
+                nf_handover_count += 1
+            else:
+                no_change += 1  # No significant event when UE first appears and SINR is above threshold
+
+        # Update the state for this UE
+        ue_previous_state[ue_id] = (current_cell_id, current_sinr_db)
+
+    return ns_handover_count, nf_handover_count, no_change
+
+
+def calculate_naive_mro_metric(ns_handover_count, nf_handover_count, prediction_ue_data):
+    # Constants for interruption times
+    ts = 50 / 1000  # Convert ms to seconds
+    t_nas = 1000 / 1000  # Convert ms to seconds
+
+    # Calculate total time (T) based on ticks; assuming each tick represents a uniform time slice
+    # This could be adjusted if ticks represent variable time slices
+    # Rather than passing the UE Data as whole we can send just an integar for tick
+    ticks = len(prediction_ue_data["tick"].unique())
+    # Assuming each tick represents 50ms (this value may need to be adjusted based on actual data characteristics)
+    tick_duration_seconds = 1  # 1 second per tick
+    T = ticks * tick_duration_seconds
+
+    # Calculate D
+    D = T - (ns_handover_count * ts + nf_handover_count * t_nas)
+
+    return D
+
+
+def reattach_columns(predicted_df, full_prediction_df):
+    # Filter full_prediction_df for the needed columns and drop duplicates based on loc_x and loc_y
+    filtered_full_df = full_prediction_df[["mock_ue_id", "tick", "loc_x", "loc_y"]].drop_duplicates(
+        subset=["loc_x", "loc_y"]
+    )
+
+    # Merge with predicted_df based on loc_x and loc_y, ensuring size matches predicted_df
+    merged_df = pd.merge(predicted_df, filtered_full_df, on=["loc_x", "loc_y"], how="left")
+
+    # Rename mock_ue_id to ue_id
+    merged_df.rename(columns={"mock_ue_id": "ue_id"}, inplace=True)
+
+    return merged_df
