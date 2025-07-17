@@ -57,7 +57,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # PPO agent
-        model = PPO("MlpPolicy", env, verbose=2, n_steps=n_steps, batch_size=batch_size, device=device)
+        model = PPO("MlpPolicy", env, verbose=1, n_steps=n_steps, batch_size=batch_size, device=device)
         model.learn(total_timesteps)
 
         # Predict optimal action using trained model

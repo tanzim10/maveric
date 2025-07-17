@@ -1,8 +1,8 @@
-import warnings
 from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
+import torch
 from scipy.stats import norm
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
@@ -27,6 +27,7 @@ class BayesianMRO(MobilityRobustnessOptimization):
     ):
         super().__init__(mobility_model_params, topology, bdt)
         self.model_type = model_type
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def _expected_improvement(self, X: np.ndarray, model, best_y: float) -> np.ndarray:
         if self.model_type == "xgboost":
@@ -46,10 +47,12 @@ class BayesianMRO(MobilityRobustnessOptimization):
                 raise ImportError("xgboost is required for model_type='xgboost'") from e
             return XGBRegressor(objective="reg:squarederror")
         else:
-            kernel = ConstantKernel(1.0, (1e-3, 1e3)) * Matern(nu=2.5) + WhiteKernel(noise_level=1e-5)
+            kernel = ConstantKernel(1.0, (1e-3, 1e3)) * Matern(nu=2.5) + WhiteKernel(
+                noise_level=1e-5, noise_level_bounds=(1e-10, 1e1)
+            )
             return GaussianProcessRegressor(kernel=kernel, normalize_y=True)
 
-    def solve(self, n_epochs: int = 20, init_samples: int = 5):
+    def solve(self, n_epochs=20, init_samples: int = 5):
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
 
@@ -108,9 +111,3 @@ class BayesianMRO(MobilityRobustnessOptimization):
         best_ttt = int(round(X[best_idx, 1]))
         print(f"\nOptimized Hyst: {best_hyst},\nOptimized TTT: {best_ttt}")
         return best_hyst, best_ttt
-    
-if __name__ == "__main__":
-    mro = BayesianMRO(mobility_model_params, topology)
-    mro.solve()
-
-    

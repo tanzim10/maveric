@@ -1,0 +1,59 @@
+{
+    "epochs": 1000,
+    "split_ratio": 0.8,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "topology": "notebooks/data/mro_data/mro_topology.csv",
+    "ue_data": "notebooks/data/mro_data/500UE_500TICK.csv",
+    "small_ue": "notebooks/data/mro_data/UE_data_20UE_100ticks.csv",
+
+    "mobility_model_params": {
+        "ue_tracks_generation": {
+                "params": {
+                    "simulation_duration": 3600,
+                    "simulation_time_interval_seconds": 0.01,
+                    "num_ticks": 50,
+                    "num_batches": 1,
+                    "ue_class_distribution": {
+                        "stationary": {
+                            "count": 10,
+                            "velocity": 0,
+                            "velocity_variance": 1
+                        },
+                        "pedestrian": {
+                            "count": 5,
+                            "velocity": 2,
+                            "velocity_variance": 1
+                        },
+                        "cyclist": {
+                            "count": 5,
+                            "velocity": 5,
+                            "velocity_variance": 1
+                        },
+                        "car": {
+                            "count": 12,
+                            "velocity": 20,
+                            "velocity_variance": 1
+                        }
+                    },
+                    "lat_lon_boundaries": {
+                        "min_lat": -90,
+                        "max_lat": 90,
+                        "min_lon": -180,
+                        "max_lon": 180
+                    },
+                    "gauss_markov_params": {
+                        "alpha": 0.5,
+                        "variance": 0.8,
+                        "rng_seed": 42,
+                        "lon_x_dims": 100,
+                        "lon_y_dims": 100,
+                        "// TODO": "Account for supporting the user choosing the anchor_loc and cov_around_anchor.",
+                        "// Current implementation": "the UE Tracks generator will not be using these values.",
+                        "// anchor_loc": {},
+                        "// cov_around_anchor": {}
+                }
+            }
+        }
+    }
+}
