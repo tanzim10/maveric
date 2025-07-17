@@ -89,7 +89,7 @@ if __name__ == "__main__":
     params = hyperparams["mobility_model_params"]
 
     logger.info("Starting The Training Phase:\n")
-    logger.info(f"Finding optimal hysteresis and TTT values for {epochs} epochs\n")
+    logger.info(f"Finding optimal hysteresis and TTT values for Simple MRO on {epochs} epochs\n")
     s_hyst, s_ttt = run_simple_mro(params, topology, train_data, epochs)
 
     logger.info(f"Finding optimal hysteresis and TTT values for XGBoost MRO on {epochs} Epochs\n")
