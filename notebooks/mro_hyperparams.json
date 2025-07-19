@@ -1,37 +1,39 @@
 {
     "epochs": 1000,
-    "split_ratio": 0.8,
+    "split_ratio": 0.225,
+    "working_ratio": 0.225,
     "batch_size": 64,
     "learning_rate": 0.001,
     "topology": "notebooks/data/mro_data/mro_topology.csv",
-    "ue_data": "notebooks/data/mro_data/500UE_500TICK.csv",
-    "small_ue": "notebooks/data/mro_data/UE_data_20UE_100ticks.csv",
+    "ue_data": "notebooks/data/mro_data/UE(305)_TICKS(551).csv",
+    "ue_data1": "notebooks/data/mro_data/UE_data_20UE_100ticks.csv",
+    "bdt": "notebooks/data/mro_data/digital_twins.pkl",
 
     "mobility_model_params": {
         "ue_tracks_generation": {
                 "params": {
                     "simulation_duration": 3600,
                     "simulation_time_interval_seconds": 0.01,
-                    "num_ticks": 50,
+                    "num_ticks": 1000,
                     "num_batches": 1,
                     "ue_class_distribution": {
                         "stationary": {
-                            "count": 10,
+                            "count": 100,
                             "velocity": 0,
                             "velocity_variance": 1
                         },
                         "pedestrian": {
-                            "count": 5,
+                            "count": 150,
                             "velocity": 2,
                             "velocity_variance": 1
                         },
                         "cyclist": {
-                            "count": 5,
+                            "count": 100,
                             "velocity": 5,
                             "velocity_variance": 1
                         },
                         "car": {
-                            "count": 12,
+                            "count": 150,
                             "velocity": 20,
                             "velocity_variance": 1
                         }

@@ -146,31 +146,23 @@ def perform_attachment_hyst_ttt(ue_data: pd.DataFrame, hyst: float, ttt: int, rl
 
     tick_dataframes = {}
     # Group the data by tick
-    for tick in sorted(ue_data["tick"].unique()):
-        tick_dataframes[tick] = ue_data[ue_data["tick"] == tick].copy()
+    tick_dataframes = {tick: group.copy() for tick, group in ue_data.groupby("tick")}
 
-    cell_attached_df = pd.DataFrame()
+    cell_attached_df = []
     for tick in sorted(tick_dataframes.keys()):
-        if ttt - 1 > len(strongest_server_history):
-            (strongest_server_history, current_attachment,) = _perform_attachment_hyst_ttt_per_tick(
-                tick_dataframes[tick],
-                strongest_server_history,
-                current_attachment,
-                ttt,
-                hyst,
-                use_strongest_server=True,
-            )
-        else:
-            (strongest_server_history, current_attachment,) = _perform_attachment_hyst_ttt_per_tick(
-                tick_dataframes[tick],
-                strongest_server_history,
-                current_attachment,
-                ttt,
-                hyst,
-                use_strongest_server=False,
-            )
+        use_strongest_server = len(strongest_server_history) < ttt - 1
+        strongest_server_history, current_attachment = _perform_attachment_hyst_ttt_per_tick(
+            tick_dataframes[tick],
+            strongest_server_history,
+            current_attachment,
+            ttt,
+            hyst,
+            use_strongest_server=use_strongest_server,
+        )
         current_attachment = _check_rlf_threshold(current_attachment, tick_dataframes[tick], rlf_threshold)
-        cell_attached_df = pd.concat([cell_attached_df, current_attachment])
+        cell_attached_df.append(current_attachment)
+
+    cell_attached_df = pd.concat(cell_attached_df, ignore_index=True)
 
     return cell_attached_df
 
@@ -236,30 +228,40 @@ def _perform_attachment_hyst_ttt_per_tick(
             - Updated list of the strongest server history (List of DataFrames).
             - Current UE-cell attachment decision (DataFrame).
     """
+    # Determine the strongest server for the current tick
     current_strongest = ue_data_for_current_tick.loc[
         ue_data_for_current_tick.groupby("ue_id")["cell_rxpower_dbm"].idxmax()
     ]
+
+    # Validate strongest_server_history length
     if len(strongest_server_history) >= ttt:
-        raise AssertionError("Error: Strongest_Server_History needs to be Less Than TTT!")
+        raise ValueError("Strongest_Server_History length must be less than TTT!")
+
+    # Use strongest server directly if specified
+    if use_strongest_server:
+        strongest_server_history.append(current_strongest)
+        current_attachment = current_strongest
     else:
-        if use_strongest_server:
-            current_attachment = current_strongest
+        # Ensure strongest_server_history length matches TTT - 1
+        if len(strongest_server_history) + 1 == ttt:
+            # Apply hysteresis check
+            current_strongest = _check_hyst(ue_data_for_current_tick, past_attachment, hyst)
             strongest_server_history.append(current_strongest)
 
-        else:
-            if ttt == len(strongest_server_history) + 1:
-                current_strongest = _check_hyst(ue_data_for_current_tick, past_attachment, hyst)
-                strongest_server_history.append(current_strongest)
-                current_attachment = _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachment)
-                current_attachment = _check_hyst_in_current_tick(
-                    ue_data_for_current_tick, current_attachment, past_attachment, hyst
-                )
-            else:
-                raise AssertionError(
-                    "Length of Strongest Server History must be EQUALS to TTT - 1."
-                    "Call Perform Attachment with use_strongest_server = True"
-                )
+            # Apply TTT logic
+            current_attachment = _check_ttt(strongest_server_history, ue_data_for_current_tick, past_attachment)
 
+            # Final hysteresis check within the current tick
+            current_attachment = _check_hyst_in_current_tick(
+                ue_data_for_current_tick, current_attachment, past_attachment, hyst
+            )
+        else:
+            raise ValueError(
+                "Strongest_Server_History length must equal TTT - 1. "
+                "Call Perform Attachment with use_strongest_server=True."
+            )
+
+    # Maintain history length within TTT
     if len(strongest_server_history) == ttt:
         strongest_server_history.pop(0)
 
@@ -319,49 +321,37 @@ def _check_hyst(ue_data_for_current_tick: pd.DataFrame, past_attachment: pd.Data
         suffixes=("", "_past"),
     )
 
-    # Initialize an empty list to store the final rows
-    final_data = []
+    # Initialize an empty dictionary to store the best rows for each UE
+    best_rows = {}
 
-    # Group by 'ue_id' to process each UE individually
-    for ue_id, group in merged_df.groupby("ue_id"):
-        # Initialize variables to track the best row for the ue_id
-        best_row = None
-        best_power = -999  # Start with an arbitrarily low value for comparison (can also use NaN)
+    # Iterate through the merged DataFrame
+    for _, row in merged_df.iterrows():
+        ue_id = row["ue_id"]
+        current_power = row["cell_rxpower_dbm"]
+        past_cell_id = row["cell_id_past"]
 
-        # Iterate through each row (cell_id) for the current ue_id
-        for _, row in group.iterrows():
-            current_power = row["cell_rxpower_dbm"]
-            past_cell_id = row["cell_id_past"]  # Cell ID from past attachment
+        # Retrieve the past power for the previous cell_id of this ue_id
+        past_power = (
+            ue_data_for_current_tick.loc[
+                (ue_data_for_current_tick["ue_id"] == ue_id) & (ue_data_for_current_tick["cell_id"] == past_cell_id),
+                "cell_rxpower_dbm",
+            ].max()
+            if past_cell_id in ue_data_for_current_tick["cell_id"].values
+            else -999
+        )
 
-            # Retrieve the past data for the previous cell_id of this ue_id
-            past_data = ue_data_for_current_tick[
-                (ue_data_for_current_tick["ue_id"] == ue_id) & (ue_data_for_current_tick["cell_id"] == past_cell_id)
-            ]
+        # Determine the best row based on hysteresis and power comparison
+        if current_power - past_power >= hyst:
+            if ue_id not in best_rows or current_power > best_rows[ue_id]["cell_rxpower_dbm"]:
+                best_rows[ue_id] = row
+        elif past_power > current_power:
+            if ue_id not in best_rows or past_power > best_rows[ue_id]["cell_rxpower_dbm"]:
+                best_rows[ue_id] = ue_data_for_current_tick.loc[
+                    (ue_data_for_current_tick["ue_id"] == ue_id) & (ue_data_for_current_tick["cell_id"] == past_cell_id)
+                ].iloc[0]
 
-            # If past data exists, get the past power
-            if not past_data.empty:
-                past_power = past_data.iloc[0]["cell_rxpower_dbm"]
-            else:
-                past_power = -999  # Default value if no past data found
-
-            # Check if the current power exceeds the past power by at least 'hyst'
-            if current_power - past_power >= hyst:
-                # If the condition is met, consider the current row (i.e., current power is better)
-                if current_power > best_power:  # Keep the row with the highest power
-                    best_row = row
-                    best_power = current_power
-            else:
-                # Otherwise, consider the past data (if it has higher power)
-                if past_power > best_power:
-                    best_row = past_data.iloc[0]  # Select the past data row
-                    best_power = past_power
-
-        # After processing all cell_ids for this ue_id, add the best row to the final list
-        if best_row is not None:
-            final_data.append(best_row)
-
-    # Convert the final list of rows into a DataFrame
-    final_df = pd.DataFrame(final_data)
+    # Convert the dictionary of best rows into a DataFrame
+    final_df = pd.DataFrame(best_rows.values())
 
     # Remove columns that have the '_past' suffix (since we only need current data)
     final_df = final_df.loc[:, ~final_df.columns.str.endswith("_past")]
@@ -416,42 +406,51 @@ def _check_ttt(
     Returns:
         pd.DataFrame: Updated UE–cell attachment decisions after applying the TTT rule.
     """
-    current_attachment_list = []  # contains updated ue -> cell + current data
+    # Combine strongest server history into a single DataFrame
     merged_df = pd.concat(strongest_server_history, ignore_index=True)
 
-    # individual UE scope
-    for UE in ue_data_for_current_tick["ue_id"].unique():
-        # Check consistency for this specific UE
-        history_consistency_check = merged_df[merged_df["ue_id"] == UE]["cell_id"].nunique()
-        consistent_cell_id = merged_df[merged_df["ue_id"] == UE]["cell_id"].unique()[0]
+    # Create a dictionary for quick lookup of past cell attachments
+    past_attachment_dict = past_attachment.set_index("ue_id")["cell_id"].to_dict()
 
-        # attach consistent cell or past cell decision
-        if history_consistency_check == 1:
+    # Initialize list for updated UE-cell attachments
+    current_attachment_list = []
+
+    # Iterate over unique UE IDs in the current tick data
+    for ue_id in ue_data_for_current_tick["ue_id"].unique():
+        # Filter merged history for the current UE
+        ue_history = merged_df[merged_df["ue_id"] == ue_id]
+
+        # Check if the cell attachment history is consistent
+        unique_cells = ue_history["cell_id"].unique()
+        if len(unique_cells) == 1:
+            # Attach to the consistent cell
+            consistent_cell_id = unique_cells[0]
             current_attachment_list.append(
-                ue_data_for_current_tick[
-                    (ue_data_for_current_tick["ue_id"] == UE)
+                ue_data_for_current_tick.loc[
+                    (ue_data_for_current_tick["ue_id"] == ue_id)
                     & (ue_data_for_current_tick["cell_id"] == consistent_cell_id)
                 ].iloc[0]
             )
         else:
-            past_cell_id = past_attachment[past_attachment["ue_id"] == UE]["cell_id"].values[0]
-            # logger.info("%s", past_cell_id)
+            # Get the past cell attachment for the current UE
+            past_cell_id = past_attachment_dict.get(ue_id, "RLF")
             if past_cell_id == "RLF":
-                # Select the cell with the highest cell_rxpower_dbm for this UE
-                highest_power_row = (
-                    ue_data_for_current_tick[ue_data_for_current_tick["ue_id"] == UE]
+                # Attach to the cell with the highest rxpower
+                current_attachment_list.append(
+                    ue_data_for_current_tick.loc[ue_data_for_current_tick["ue_id"] == ue_id]
                     .nlargest(1, "cell_rxpower_dbm")
                     .iloc[0]
                 )
-                current_attachment_list.append(highest_power_row)
             else:
+                # Attach to the past cell
                 current_attachment_list.append(
-                    ue_data_for_current_tick[
-                        (ue_data_for_current_tick["ue_id"] == UE)
+                    ue_data_for_current_tick.loc[
+                        (ue_data_for_current_tick["ue_id"] == ue_id)
                         & (ue_data_for_current_tick["cell_id"] == past_cell_id)
                     ].iloc[0]
                 )
 
+    # Convert the list of attachments to a DataFrame
     current_attachment = pd.DataFrame(current_attachment_list).reset_index(drop=True)
 
     return current_attachment
@@ -507,52 +506,26 @@ def _check_rlf_threshold(df: pd.DataFrame, current_tick_df: pd.DataFrame, rlf_th
     # Create a copy to avoid modifying the original
     updated_df = df.copy()
 
-    for ue_id in df["ue_id"]:
-        # Get relevant rows for the current UE
-        df_ue = df[df["ue_id"] == ue_id]
-        current_tick_ue = current_tick_df[current_tick_df["ue_id"] == ue_id]
+    # Find the best SINR row for each ue_id in current_tick_df (vectorized)
+    best_rows = current_tick_df.loc[current_tick_df.groupby("ue_id")["sinr_db"].idxmax()]
+    best_rows = best_rows[best_rows["sinr_db"] >= rlf_threshold].set_index("ue_id")
 
-        if df_ue.empty:
-            continue
+    # Vectorized mask for rows below threshold
+    below_thresh_mask = updated_df["sinr_db"] < rlf_threshold
 
-        max_sinr = df_ue["sinr_db"].values[0]
-
-        if max_sinr >= rlf_threshold:
-            continue  # No update needed
-
-        if not current_tick_ue.empty:
-            max_sinr_current_tick = current_tick_ue["sinr_db"].max()
-
-            if max_sinr_current_tick >= rlf_threshold:
-                # Use the row with best SINR in current_tick_ue
-                best_row = current_tick_ue.loc[current_tick_ue["sinr_db"].idxmax()]
-
-                # Get the index in updated_df where ue_id matches
-                target_indices = updated_df.index[updated_df["ue_id"] == ue_id]
-
-                if not target_indices.empty:
-                    target_idx = target_indices[0]
-
-                    # Find all common columns
-                    common_cols = updated_df.columns.intersection(current_tick_df.columns)
-
-                    for col in common_cols:
-                        try:
-                            updated_df.at[target_idx, col] = best_row[col]
-                        except Exception:
-                            pass  # Silently skip invalid updates
-                continue  # Skip the RLF fallback if updated
-
-        # If threshold condition failed in both df and current_tick_df, set RLF values
-        target_indices = updated_df.index[updated_df["ue_id"] == ue_id]
-        if not target_indices.empty:
-            target_idx = target_indices[0]
-            if "sinr_db" in updated_df.columns:
-                updated_df.at[target_idx, "sinr_db"] = -np.inf
-            if "cell_id" in updated_df.columns:
-                updated_df.at[target_idx, "cell_id"] = "RLF"
-            if "cell_rxpower_dbm" in updated_df.columns:
-                updated_df.at[target_idx, "cell_rxpower_dbm"] = -np.inf
+    # Try to update with best row from current_tick_df if available and above threshold
+    for idx in updated_df[below_thresh_mask].index:
+        ue_id = updated_df.at[idx, "ue_id"]
+        if ue_id in best_rows.index:
+            for col in updated_df.columns.intersection(current_tick_df.columns):
+                if col == "ue_id":
+                    continue  # Do not update 'ue_id' column
+                updated_df.at[idx, col] = best_rows.at[ue_id, col]
+        else:
+            # If no valid cell, set RLF
+            updated_df.at[idx, "sinr_db"] = -np.inf
+            updated_df.at[idx, "cell_id"] = "RLF"
+            updated_df.at[idx, "cell_rxpower_dbm"] = -np.inf
 
     return updated_df
 
