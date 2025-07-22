@@ -248,8 +248,8 @@ def test_visualization():
     TEST_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "test_output")
     
     # Test parameters
-    TEST_DAY = 1
-    TICK = 16
+    TEST_DAY = 2
+    TICK = 3
     
     try:
         logger.info("Testing visualization with azimuth-aligned wedges...")

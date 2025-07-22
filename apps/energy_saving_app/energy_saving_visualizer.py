@@ -11,6 +11,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Wedge
 from matplotlib.collections import PatchCollection
 import matplotlib.patches as mpatches
+from scipy.spatial import ConvexHull
 
 try:
     from stable_baselines3 import PPO
@@ -20,9 +21,11 @@ try:
 except ImportError as e:
     print(f"FATAL: Error importing libraries: {e}."); sys.exit(1)
 
+# Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Constants
 TILT_SET = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0]
 
 class EnergySavingVisualizer:
@@ -204,7 +207,7 @@ class EnergySavingVisualizer:
         # Create color mapping using matplotlib colormap with 100 levels
         import matplotlib.pyplot as plt
         unique_colors = 100
-        cmap = plt.get_cmap('tab20', unique_colors)  # Better color separation
+        cmap = plt.get_cmap('tab20b', unique_colors)  # Better color separation
         
         # Divide 100 colors into max_cells_per_site buckets
         bucket_size = unique_colors / max_cells_per_site
@@ -362,7 +365,7 @@ class EnergySavingVisualizer:
         if unique_cells:
             for i, cell_id in enumerate(unique_cells):
                 cell_ues = served_ues[served_ues["serving_cell_id"] == cell_id]
-                cell_color = site_color_map.get(cell_id, self.ue_colors[i % len(self.ue_colors)])
+                cell_color = site_color_map.get(cell_id, (0.7, 0.85, 1.0))
                 ax.scatter(
                     cell_ues[self.COL_LON], 
                     cell_ues[self.COL_LAT], 
@@ -371,6 +374,24 @@ class EnergySavingVisualizer:
                     alpha=0.8, 
                     label=f"UEs ({cell_id})"
                 )
+
+                # Plot convex hull for cells with at least 3 UEs
+                if len(cell_ues) >= 3:
+                    points = cell_ues[[self.COL_LON, self.COL_LAT]].to_numpy()
+                    try:
+                        from scipy.spatial import ConvexHull
+                        hull = ConvexHull(points)
+                        for simplex in hull.simplices:
+                            ax.plot(points[simplex, 0], points[simplex, 1], color=cell_color, linewidth=1.5)
+                        # Close polygon
+                        ax.plot(
+                            [points[hull.vertices[-1], 0], points[hull.vertices[0], 0]],
+                            [points[hull.vertices[-1], 1], points[hull.vertices[0], 1]],
+                            color=cell_color,
+                            linewidth=1.5,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not plot convex hull for {cell_id}: {e}")
 
         # Plot disconnected UEs
         no_serve_ues = plot_df[plot_df['serving_cell_id'].isna()]
@@ -431,12 +452,18 @@ class EnergySavingVisualizer:
         # Create custom legend
         legend_elements = []
         
-        # Single legend entry for all colored dots
-        if unique_cells:
+        # Get all cells (both active and inactive) for legend
+        all_cells = sorted(self.site_config_df_base[self.COL_CELL_ID].unique())
+        
+        # Add legend entry for each cell with its specific color
+        for cell_id in all_cells:
+            cell_color = site_color_map.get(cell_id, (0.7, 0.85, 1.0))
+            is_active = cell_id in active_cell_ids
+            # status = "Active" if is_active else "Inactive"
             legend_elements.append(
                 Line2D([0], [0], marker='o', color='w', 
-                       markerfacecolor='blue',  # Use a representative color
-                                               markersize=8, label="UE connected to cell of\ncorresponding color")
+                       markerfacecolor=cell_color, markersize=8, 
+                       label=f"{cell_id}")
             )
         
         # Disconnected UEs
@@ -448,14 +475,14 @@ class EnergySavingVisualizer:
         
         # Tower status legend
         legend_elements.extend([
-            Patch(facecolor='green', edgecolor='black', label='Active Cell (Outer Ring)'),
-            Patch(facecolor='red', edgecolor='black', label='Inactive Cell (Outer Ring)'),
+            Patch(facecolor='green', edgecolor='black', label='Active Cell'),
+            Patch(facecolor='red', edgecolor='black', label='Inactive Cell'),
         ])
 
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
         ax.grid(True, linestyle='--', alpha=0.4)
-        ax.legend(handles=legend_elements, loc='best', fontsize='small')
+        ax.legend(handles=legend_elements, loc='upper right', fontsize='small')
 
     def generate_comparison_plots(self, day: int, tick: int, output_dir: str):
         ue_data_dir = os.path.join(self.base_ue_data_dir, f"Day_{day}", "ue_data_gym_ready")

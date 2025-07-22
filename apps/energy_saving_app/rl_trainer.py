@@ -18,7 +18,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(APP_DIR))
 sys.path.insert(0, PROJECT_ROOT)
 
 try:
-    from rl_energy_saving_env import TickAwareEnergyEnv
+    from apps.energy_saving_app.rl_energy_saving_env import TickAwareEnergyEnv
     from stable_baselines3 import PPO
     from stable_baselines3.common.callbacks import CheckpointCallback
     from stable_baselines3.common.monitor import Monitor
