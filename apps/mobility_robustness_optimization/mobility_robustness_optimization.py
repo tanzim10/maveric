@@ -129,7 +129,7 @@ class MobilityRobustnessOptimization(ABC):
 
         chunks = []
         for i in range(0, total_rows, rows_per_chunk):
-            chunk = new_data.iloc[i:i + rows_per_chunk].copy()
+            chunk = new_data.iloc[i : i + rows_per_chunk].copy()
             chunks.append(chunk)
 
         return chunks
