@@ -1,5 +1,5 @@
 {
-    "epochs": 10,
+    "epochs": 100,
     "split_ratio": 0.80,
     "batch_size": 64,
     "learning_rate": 0.001,

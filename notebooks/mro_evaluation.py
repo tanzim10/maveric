@@ -16,28 +16,24 @@ from radp.digital_twin.utils.constants import RLF_THRESHOLD
 def run_simple_mro(params, topology, data, epochs):
     mro = SimpleMRO(params, topology)
     mro.train_or_update_rf_twins(data)
-    mro.save_bdt()
     return mro.solve(n_epochs=epochs)
 
 
 def run_xgboost(params, topology, data, epochs):
     mro = BayesianMRO(params, topology, model_type="xgboost")
-    mro.load_bdt()
-    # mro.train_or_update_rf_twins(data)
+    mro.train_or_update_rf_twins(data)
     return mro.solve(n_epochs=epochs)
 
 
 def run_gpr(params, topology, data, epochs):
     mro = BayesianMRO(params, topology)
-    mro.load_bdt()
-    # mro.train_or_update_rf_twins(data) # Uncomment later
+    mro.train_or_update_rf_twins(data)
     return mro.solve(n_epochs=epochs)
 
 
 def run_rl_mro(params, topology, data, epochs):
     mro = ReinforcedMRO(params, topology)
-    mro.load_bdt()
-    # mro.train_or_update_rf_twins(data)
+    mro.train_or_update_rf_twins(data)
     return mro.solve(total_timesteps=epochs)
 
 

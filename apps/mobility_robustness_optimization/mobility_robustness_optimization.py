@@ -51,74 +51,17 @@ class MobilityRobustnessOptimization(ABC):
         """
         return df.memory_usage(deep=True).sum() / (1024 * 1024)
 
-    def split_new_data_stratified(self, new_data: pd.DataFrame, target_size: float = 1.0) -> List[pd.DataFrame]:
-        """
-        Splits the new_data DataFrame into chunks ensuring all unique cell_ids are present in the first chunk.
-        This is essential for initial training from scratch to ensure all cells get trained models.
-
-        Parameters:
-            new_data (pd.DataFrame): The original DataFrame to split
-            target_size (float): Target size for each chunk in MB
-
-        Returns:
-            List[pd.DataFrame]: List of DataFrame chunks with first chunk containing all cell_ids
-        """
-        # Get all unique cell_ids
-        unique_cell_ids = new_data["cell_id"].unique()
-
-        # Calculate target rows per chunk based on data size
-        total_rows = len(new_data)
-        data_size_mb = self.get_dataframe_size(new_data)
-        rows_per_chunk = max(1, int(total_rows * (target_size / data_size_mb)))
-
-        # First, ensure we sample at least some data from each cell_id for the first chunk
-        first_chunk_data = []
-        remaining_data = new_data.copy()
-
-        # Sample a minimum number of rows from each cell_id for the first chunk
-        min_samples_per_cell = max(1, rows_per_chunk // (len(unique_cell_ids) * 2))  # Conservative estimate
-
-        for cell_id in unique_cell_ids:
-            cell_data = remaining_data[remaining_data["cell_id"] == cell_id]
-            if len(cell_data) > 0:
-                # Take a sample from this cell for the first chunk
-                sample_size = min(min_samples_per_cell, len(cell_data))
-                cell_sample = cell_data.sample(n=sample_size, random_state=42)
-                first_chunk_data.append(cell_sample)
-                # Remove sampled data from remaining data
-                remaining_data = remaining_data.drop(cell_sample.index)
-
-        # Combine samples from all cells for first chunk
-        first_chunk_base = pd.concat(first_chunk_data, ignore_index=True)
-
-        # If first chunk is still smaller than target, fill it up with remaining data
-        first_chunk_remaining_capacity = rows_per_chunk - len(first_chunk_base)
-        if first_chunk_remaining_capacity > 0 and len(remaining_data) > 0:
-            additional_data = remaining_data.head(first_chunk_remaining_capacity)
-            first_chunk = pd.concat([first_chunk_base, additional_data], ignore_index=True)
-            remaining_data = remaining_data.drop(additional_data.index)
-        else:
-            first_chunk = first_chunk_base
-
-        # Now split the remaining data into regular chunks
-        chunks = [first_chunk]
-
-        if len(remaining_data) > 0:
-            remaining_data = remaining_data.reset_index(drop=True)
-            for i in range(0, len(remaining_data), rows_per_chunk):
-                chunk = remaining_data.iloc[i:i + rows_per_chunk].copy()
-                chunks.append(chunk)
-
-        return chunks
-
-    def split_new_data_into_chunks(self, new_data: pd.DataFrame, target_size: float = 1.0) -> List[pd.DataFrame]:
+    def split_new_data(
+        self, new_data: pd.DataFrame, target_size: float = 1.0, stratify: bool = False
+    ) -> List[pd.DataFrame]:
         """
         Splits the new_data DataFrame into smaller chunks based on the target size in MB.
-        Returns a list of DataFrames.
+        If stratify is True, ensures all unique cell_ids are present in the first chunk.
 
         Parameters:
             new_data (pd.DataFrame): The original DataFrame to split
             target_size (float): Target size for each chunk in MB
+            stratify (bool): Whether to stratify the first chunk to include all unique cell_ids
 
         Returns:
             List[pd.DataFrame]: List of DataFrame chunks
@@ -127,12 +70,58 @@ class MobilityRobustnessOptimization(ABC):
         data_size_mb = self.get_dataframe_size(new_data)
         rows_per_chunk = max(1, int(total_rows * (target_size / data_size_mb)))
 
-        chunks = []
-        for i in range(0, total_rows, rows_per_chunk):
-            chunk = new_data.iloc[i : i + rows_per_chunk].copy()
-            chunks.append(chunk)
+        if stratify:
+            # Get all unique cell_ids
+            unique_cell_ids = new_data["cell_id"].unique()
 
-        return chunks
+            # First, ensure we sample at least some data from each cell_id for the first chunk
+            first_chunk_data = []
+            remaining_data = new_data.copy()
+
+            # Sample a minimum number of rows from each cell_id for the first chunk
+            min_samples_per_cell = max(1, rows_per_chunk // (len(unique_cell_ids) * 2))  # Conservative estimate
+
+            for cell_id in unique_cell_ids:
+                cell_data = remaining_data[remaining_data["cell_id"] == cell_id]
+                if len(cell_data) > 0:
+                    # Take a sample from this cell for the first chunk
+                    sample_size = min(min_samples_per_cell, len(cell_data))
+                    cell_sample = cell_data.sample(n=sample_size, random_state=42)
+                    first_chunk_data.append(cell_sample)
+                    # Remove sampled data from remaining data
+                    remaining_data = remaining_data.drop(cell_sample.index)
+
+            # Combine samples from all cells for first chunk
+            first_chunk_base = pd.concat(first_chunk_data, ignore_index=True)
+
+            # If first chunk is still smaller than target, fill it up with remaining data
+            first_chunk_remaining_capacity = rows_per_chunk - len(first_chunk_base)
+            if first_chunk_remaining_capacity > 0 and len(remaining_data) > 0:
+                additional_data = remaining_data.head(first_chunk_remaining_capacity)
+                first_chunk = pd.concat([first_chunk_base, additional_data], ignore_index=True)
+                remaining_data = remaining_data.drop(additional_data.index)
+            else:
+                first_chunk = first_chunk_base
+
+            # Now split the remaining data into regular chunks
+            chunks = [first_chunk]
+
+            if len(remaining_data) > 0:
+                remaining_data = remaining_data.reset_index(drop=True)
+                for i in range(0, len(remaining_data), rows_per_chunk):
+                    chunk = remaining_data.iloc[i : i + rows_per_chunk].copy()  # noqa: E203
+                    chunks.append(chunk)
+
+            return chunks
+
+        else:
+            # Regular chunking without stratification
+            chunks = []
+            for i in range(0, total_rows, rows_per_chunk):
+                chunk = new_data.iloc[i : i + rows_per_chunk].copy()  # noqa: E203
+                chunks.append(chunk)
+
+            return chunks
 
     def train_or_update_rf_twins(self, new_data: pd.DataFrame) -> None:
         """
@@ -189,16 +178,16 @@ class MobilityRobustnessOptimization(ABC):
             # Determine if this is initial training (no existing BDTs)
             is_initial_training = len(self.bayesian_digital_twins) == 0
 
-            if new_data_size > 5:
+            if new_data_size > 10:
                 print("Large dataset detected, splitting into smaller chunks.")
 
                 if is_initial_training:
                     # For initial training, use stratified chunking to ensure all cell_ids are in the first chunk
-                    data_chunks = self.split_new_data_stratified(new_data, target_size=1.0)
+                    data_chunks = self.split_new_data(new_data, target_size=2.5, stratify=True)
                     print(f"Initial training: Using stratified chunking into {len(data_chunks)} chunks.")
                 else:
                     # For updates, use regular chunking
-                    data_chunks = self.split_new_data_into_chunks(new_data, target_size=1.0)
+                    data_chunks = self.split_new_data(new_data, target_size=2.5)
                     print(f"Update mode: Using regular chunking into {len(data_chunks)} chunks.")
 
                 for chunk_idx, chunk_data in enumerate(data_chunks):
@@ -211,25 +200,30 @@ class MobilityRobustnessOptimization(ABC):
                     # Prepare the chunk data for training or updating
                     prepared_data = self._prepare_train_or_update_data(chunk_data)
 
-                    # Ensure consistent cell_id formatting between training and updating
                     if self.bayesian_digital_twins:
                         # Get the format used in existing BDTs (should be strings like 'cell_1')
                         existing_cell_format = list(self.bayesian_digital_twins.keys())[0]
+
+                        # Check the following boolean conidition before comparing new_data
                         if isinstance(existing_cell_format, str) and existing_cell_format.startswith("cell_"):
+
                             # Convert prepared_data keys to match existing format
                             prepared_data_fixed = {}
+
+                            # Convert this loop into a function which and call it on new_data
                             for cell_id, df in prepared_data.items():
                                 if isinstance(cell_id, int):
                                     fixed_cell_id = f"cell_{cell_id}"
                                 else:
                                     fixed_cell_id = cell_id
                                 prepared_data_fixed[fixed_cell_id] = df
+                                print(f"Cell ID: {cell_id}, Number of Rows: {len(df)}")
+
                             prepared_data = prepared_data_fixed
 
-                    print(f"Prepared data contains {len(prepared_data)} cell_ids: {sorted(prepared_data.keys())}")
-
-                    if self.bayesian_digital_twins:
                         print("Updating existing Bayesian Digital Twins with new data.")
+                        self.solve(n_epochs=1)
+
                         for cell_id, df in prepared_data.items():
                             if cell_id in self.bayesian_digital_twins:
                                 self._update(cell_id, df)
@@ -249,8 +243,7 @@ class MobilityRobustnessOptimization(ABC):
 
                         self._training(maxiter=100, train_data=prepared_data)
                         print(f"Bayesian Digital Twins trained successfully for cells: {sorted(prepared_data.keys())}")
-
-                        self.solve(n_epochs=1)
+                    print(f"Prepared data contains {len(prepared_data)} cell_ids: {sorted(prepared_data.keys())}")
 
             else:
                 # For smaller datasets, process normally without batching
