@@ -1289,6 +1289,14 @@ def normalize_cell_ids(df: pd.DataFrame) -> pd.DataFrame:
     df["cell_id"] = df["cell_id"].apply(lambda x: f"cell_{int(float(x))}" if not str(x).startswith("cell_") else str(x))
     return df
 
+def normalize_cell_id_keys(data: Dict[int | str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+    """
+    Normalizes keys in a dictionary so all keys follow the 'cell_<int>' string format.
+    """
+    return {
+        f"cell_{int(k)}" if not str(k).startswith("cell_") else str(k): v
+        for k, v in data.items()
+    }
 
 def check_cartesian_format(df: pd.DataFrame, topology: pd.DataFrame) -> bool:
     """

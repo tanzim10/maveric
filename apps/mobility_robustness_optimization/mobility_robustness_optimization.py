@@ -19,6 +19,7 @@ from notebooks.radp_library import (
     check_cartesian_format,
     get_percell_data,
     normalize_cell_ids,
+    normalize_cell_id_keys,
     preprocess_ue_data,
 )
 from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin, NormMethod
@@ -183,11 +184,11 @@ class MobilityRobustnessOptimization(ABC):
 
                 if is_initial_training:
                     # For initial training, use stratified chunking to ensure all cell_ids are in the first chunk
-                    data_chunks = self.split_new_data(new_data, target_size=2.5, stratify=True)
+                    data_chunks = self.split_new_data(new_data, target_size = 5, stratify=True)
                     print(f"Initial training: Using stratified chunking into {len(data_chunks)} chunks.")
                 else:
                     # For updates, use regular chunking
-                    data_chunks = self.split_new_data(new_data, target_size=2.5)
+                    data_chunks = self.split_new_data(new_data, target_size = 5)
                     print(f"Update mode: Using regular chunking into {len(data_chunks)} chunks.")
 
                 for chunk_idx, chunk_data in enumerate(data_chunks):
@@ -201,28 +202,8 @@ class MobilityRobustnessOptimization(ABC):
                     prepared_data = self._prepare_train_or_update_data(chunk_data)
 
                     if self.bayesian_digital_twins:
-                        # Get the format used in existing BDTs (should be strings like 'cell_1')
-                        existing_cell_format = list(self.bayesian_digital_twins.keys())[0]
-
-                        # Check the following boolean conidition before comparing new_data
-                        if isinstance(existing_cell_format, str) and existing_cell_format.startswith("cell_"):
-
-                            # Convert prepared_data keys to match existing format
-                            prepared_data_fixed = {}
-
-                            # Convert this loop into a function which and call it on new_data
-                            for cell_id, df in prepared_data.items():
-                                if isinstance(cell_id, int):
-                                    fixed_cell_id = f"cell_{cell_id}"
-                                else:
-                                    fixed_cell_id = cell_id
-                                prepared_data_fixed[fixed_cell_id] = df
-                                print(f"Cell ID: {cell_id}, Number of Rows: {len(df)}")
-
-                            prepared_data = prepared_data_fixed
-
                         print("Updating existing Bayesian Digital Twins with new data.")
-                        self.solve(n_epochs=1)
+                        self.solve(n_epochs=1, verbose = 0)
 
                         for cell_id, df in prepared_data.items():
                             if cell_id in self.bayesian_digital_twins:
@@ -250,30 +231,18 @@ class MobilityRobustnessOptimization(ABC):
                 print(f"Cell_ids in data: {sorted(data_cell_ids)}")
                 prepared_data = self._prepare_train_or_update_data(new_data)
 
-                # Ensure consistent cell_id formatting between training and updating
                 if self.bayesian_digital_twins:
-                    # Get the format used in existing BDTs (should be strings like 'cell_1')
-                    existing_cell_format = list(self.bayesian_digital_twins.keys())[0]
-                    if isinstance(existing_cell_format, str) and existing_cell_format.startswith("cell_"):
-                        # Convert prepared_data keys to match existing format
-                        prepared_data_fixed = {}
-                        for cell_id, df in prepared_data.items():
-                            if isinstance(cell_id, int):
-                                fixed_cell_id = f"cell_{cell_id}"
-                            else:
-                                fixed_cell_id = cell_id
-                            prepared_data_fixed[fixed_cell_id] = df
-                        prepared_data = prepared_data_fixed
-
-                print(f"Prepared data contains {len(prepared_data)} cell_ids: {sorted(prepared_data.keys())}")
-
-                if self.bayesian_digital_twins:
+                    
+                    print(f"Prepared data contains {len(prepared_data)} cell_ids: {sorted(prepared_data.keys())}")
+                    
                     print("Updating existing Bayesian Digital Twins with new data.")
+                    
                     for cell_id, df in prepared_data.items():
                         if cell_id in self.bayesian_digital_twins:
                             self._update(cell_id, df)
                         else:
                             print(f"WARNING: No existing BDT for {cell_id}, skipping update.")
+                    
                     print("Bayesian Digital Twins updated successfully.")
 
                 # If no Bayesian Digital Twins exist, train from scratch
@@ -460,9 +429,10 @@ class MobilityRobustnessOptimization(ABC):
 
 
         """
+        topology_copy = self.topology.copy()
         required_columns = {"cell_lat", "cell_lon", "cell_az_deg"}
         if not required_columns.issubset(df.columns):
-            df = add_cell_info(df, self.topology)
+            df = add_cell_info(df, topology_copy)
 
         self.update_data = calc_log_distance(df)
         self.update_data = calc_relative_bearing(self.update_data)
@@ -471,11 +441,11 @@ class MobilityRobustnessOptimization(ABC):
 
         # anything refering as training indicates training or update data
         train_per_cell_df = [x for _, x in self.update_data.groupby("cell_id")]
-        n_cell = len(self.topology.index)
+        n_cell = len(topology_copy.index)
 
         metadata_df = pd.DataFrame(
             {
-                "cell_id": [cell_id for cell_id in self.topology.cell_id],
+                "cell_id": [cell_id for cell_id in topology_copy.cell_id],
                 "idx": [i + 1 for i in range(n_cell)],
             }
         )
@@ -500,6 +470,7 @@ class MobilityRobustnessOptimization(ABC):
 
         for i, df in enumerate(train_per_cell_df_processed):
             train_cell_id = idx_cell_id_mapping[i + 1]
+            train_cell_id = f"cell_{int(train_cell_id)}" if not str(train_cell_id).startswith("cell_") else str(train_cell_id)
             training_data[train_cell_id] = df
 
         return training_data
@@ -583,8 +554,9 @@ class MobilityRobustnessOptimization(ABC):
             },
             inplace=True,
         )
-        if self.topology["cell_id"].dtype == object:
-            self.topology["cell_id"] = self.topology["cell_id"].str.replace("cell_", "").astype(int)
+        topo = self.topology.copy()
+        if topo["cell_id"].dtype == object:
+            topo["cell_id"] = topo["cell_id"].str.replace("cell_", "").astype(int)
         if df["cell_id"].dtype == object:
             df["cell_id"] = df["cell_id"].str.extract(r"(\d+)").astype(int)
         df = self._add_sinr_column(df)
