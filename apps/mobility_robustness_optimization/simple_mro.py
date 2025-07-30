@@ -29,7 +29,7 @@ class SimpleMRO(MobilityRobustnessOptimization):
     ):
         super().__init__(mobility_model_params, topology, bdt)
 
-    def solve(self, n_epochs=100):
+    def solve(self, n_epochs=100, verbose=1):
         """
         Solve the mobility robustness optimization problem.
         """
@@ -66,9 +66,11 @@ class SimpleMRO(MobilityRobustnessOptimization):
 
         self.score = pd.DataFrame(columns=["hyst", "ttt", "score"])
 
-        header = f"{'Epoch':<6} {'Hyst':<14} {'TTT':<6} {'MRO Metric':<12}"
-        print(header)
-        print("-" * len(header))
+        if verbose == 1:
+            header = f"{'Epoch':<6} {'Hyst':<14} {'TTT':<6} {'MRO Metric':<12}"
+            print(header)
+            print("-" * len(header))
+
         self.score.loc[len(self.score)] = [hyst, ttt, calculate_mro_metric(attached_df)]
         for i in range(epochs):
             while True:
@@ -82,10 +84,14 @@ class SimpleMRO(MobilityRobustnessOptimization):
 
             # Store the data in the score DataFrame
             self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
-            print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
 
-        print(f"\nOptimized Hyst: {self.score.loc[self.score['score'].idxmax(), 'hyst']},")
-        print(f"Optimized TTT: {int(self.score.loc[self.score['score'].idxmax(), 'ttt'])}")
+            if verbose == 1:
+                print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
+
+        if verbose == 1:
+            print(f"\nOptimized Hyst: {self.score.loc[self.score['score'].idxmax(), 'hyst']},")
+            print(f"Optimized TTT: {int(self.score.loc[self.score['score'].idxmax(), 'ttt'])}")
+
         return self.score.loc[self.score["score"].idxmax(), "hyst"], int(
             self.score.loc[self.score["score"].idxmax(), "ttt"]
         )
