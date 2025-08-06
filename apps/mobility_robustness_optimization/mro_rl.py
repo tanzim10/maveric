@@ -29,12 +29,14 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
     ):
         super().__init__(mobility_model_params, topology, bdt)
 
-    def solve(self, total_timesteps=100, n_steps=64, batch_size=64):
+    def solve(self, n_epochs=100, n_steps=64, batch_size=64, verbose: int = 0):
         """
         Trains a PPO agent to optimize hysteresis and TTT values.
         """
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
+
+        total_timesteps = n_epochs * n_steps
 
         # Load and prepare simulation data
         self.simulation_data = get_ue_data(self.mobility_model_params)
@@ -57,7 +59,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # PPO agent
-        model = PPO("MlpPolicy", env, verbose=1, n_steps=n_steps, batch_size=batch_size, device=device)
+        model = PPO("MlpPolicy", env, verbose=verbose, n_steps=n_steps, batch_size=batch_size, device=device)
         model.learn(total_timesteps)
 
         # Predict optimal action using trained model

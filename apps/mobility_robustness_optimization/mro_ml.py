@@ -52,7 +52,7 @@ class BayesianMRO(MobilityRobustnessOptimization):
             )
             return GaussianProcessRegressor(kernel=kernel, normalize_y=True)
 
-    def solve(self, n_epochs=20, init_samples: int = 5):
+    def solve(self, n_epochs=20, init_samples: int = 5, verbose: int = 0):
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
 
@@ -109,5 +109,7 @@ class BayesianMRO(MobilityRobustnessOptimization):
 
         best_hyst = float(X[best_idx, 0])
         best_ttt = int(round(X[best_idx, 1]))
-        print(f"\nOptimized Hyst: {best_hyst},\nOptimized TTT: {best_ttt}")
+
+        if verbose == 1:
+            print(f"\nOptimized Hyst: {best_hyst},\nOptimized TTT: {best_ttt}")
         return best_hyst, best_ttt

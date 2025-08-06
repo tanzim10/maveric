@@ -34,7 +34,7 @@ def run_gpr(params, topology, data, epochs):
 def run_rl_mro(params, topology, data, epochs):
     mro = ReinforcedMRO(params, topology)
     mro.train_or_update_rf_twins(data)
-    return mro.solve(total_timesteps=epochs)
+    return mro.solve(n_epochs=epochs)
 
 
 def run_naive_attachment(data, topology):
@@ -74,6 +74,7 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(__name__)
 
+    logger.info("\n" + "-" * 100 + "\n")
     logger.info("Loading topology and UE data")
 
     topology = pd.read_csv(hyperparams["topology"])
@@ -82,10 +83,14 @@ if __name__ == "__main__":
     epochs = hyperparams["epochs"]
     split_ratio = hyperparams["split_ratio"]
 
+    logger.info("\n" + "-" * 100 + "\n")
+
     logger.info("Preprocessing data")
 
     ue_data.rename(columns={"lat": "latitude", "lon": "longitude"}, inplace=True)
     full_data = preprocess_ue_data(ue_data, topology)
+
+    logger.info("\n" + "-" * 100 + "\n")
 
     logger.info("Splitting data into training and testing sets")
 
@@ -107,19 +112,37 @@ if __name__ == "__main__":
 
     params = hyperparams["mobility_model_params"]
 
+    logger.info("\n" + "-" * 100 + "\n")
+
     logger.info("Starting The Training Phase:\n")
+
+    logger.info("\n" + "-" * 100 + "\n")
 
     s_hyst, s_ttt = timed_run(
         logger, f"Simple MRO on {epochs} epochs", run_simple_mro, params, topology, train_data, epochs
     )
+
+    logger.info("\n" + "-" * 100 + "\n")
+
     xgb_hyst, xgb_ttt = timed_run(
         logger, f"XGBoost MRO on {epochs} Epochs", run_xgboost, params, topology, train_data, epochs
     )
+
+    logger.info("\n" + "-" * 100 + "\n")
+
     gpr_hyst, gpr_ttt = timed_run(logger, f"GPR MRO on {epochs} Epochs", run_gpr, params, topology, train_data, epochs)
+
+    logger.info("\n" + "-" * 100 + "\n")
+
     rl_hyst, rl_ttt = timed_run(
         logger, f"Reinforced MRO on {epochs} Epochs", run_rl_mro, params, topology, train_data, epochs
     )
+
+    logger.info("\n" + "-" * 100 + "\n")
+
     base_score = timed_run(logger, "Naive Attachment", run_naive_attachment, train_data, topology)
+
+    logger.info("\n" + "-" * 100 + "\n")
 
     logger.info("Preprocessing Testing Data")
 
@@ -129,6 +152,8 @@ if __name__ == "__main__":
     mro = SimpleMRO(params, topology)
     train_data = mro._add_sinr_column(train_data)
     test_data = mro._add_sinr_column(test_data)
+
+    logger.info("\n" + "-" * 100 + "\n")
 
     logger.info("Evaluating Scores\n")
 
@@ -166,6 +191,8 @@ if __name__ == "__main__":
     train_metric = run_naive_attachment(train_data, topology)
     test_metric = run_naive_attachment(test_data, topology)
 
+    logger.info("\n" + "-" * 100 + "\n")
+
     logger.info("Results Summary:")
     logger.info(f"Simple MRO: \t\tHyst = {s_hyst:.3f}, TTT = {s_ttt}")
     logger.info(
@@ -186,6 +213,8 @@ if __name__ == "__main__":
     logger.info(f"Reinforced MRO: \t\tHyst = {rl_hyst:.3f}, TTT = {rl_ttt}")
     logger.info(f"  Train Score: \t\t{rl_score_train:.2f} ({percentage_difference(train_metric, rl_score_train)})")
     logger.info(f"  Test Score:  \t\t{rl_score_test:.2f} ({percentage_difference(test_metric, rl_score_test)})\n")
+
+    logger.info("\n" + "-" * 100 + "\n")
 
     end_total = time.time()
     logger.info(f"Total time elapsed: {end_total - start_total:.2f} seconds")
