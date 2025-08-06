@@ -46,25 +46,25 @@ def check_interrupt():
 def run_simple_mro(params, topology, data, epochs):
     mro = SimpleMRO(params, topology)
     mro.train_or_update_rf_twins(data)
-    return mro.solve(n_epochs=epochs)
+    return mro.solve(n_epochs=epochs, verbose=1)
 
 
 def run_xgboost(params, topology, data, epochs):
     mro = BayesianMRO(params, topology, model_type="xgboost")
     mro.train_or_update_rf_twins(data)
-    return mro.solve(n_epochs=epochs)
+    return mro.solve(n_epochs=epochs, verbose=1)
 
 
 def run_gpr(params, topology, data, epochs):
     mro = BayesianMRO(params, topology)
     mro.train_or_update_rf_twins(data)
-    return mro.solve(n_epochs=epochs)
+    return mro.solve(n_epochs=epochs, verbose=1)
 
 
 def run_rl_mro(params, topology, data, epochs):
     mro = ReinforcedMRO(params, topology)
     mro.train_or_update_rf_twins(data)
-    return mro.solve(n_epochs=epochs)
+    return mro.solve(n_epochs=epochs, verbose=1)
 
 
 def run_naive_attachment(data, topology):
