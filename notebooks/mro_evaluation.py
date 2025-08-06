@@ -269,11 +269,11 @@ if __name__ == "__main__":
     logger.info(f"  Train Score: \t\t{gpr_score_train:.2f} ({percentage_difference(train_metric, gpr_score_train)})")
     logger.info(f"  Test Score: \t\t{gpr_score_test:.2f} ({percentage_difference(test_metric, gpr_score_test)})\n")
 
-    logger.info(f"XGBoost MRO: \t\tHyst = {xgb_hyst:.3f}, TTT = {xgb_ttt}")
+    logger.info(f"XGBoost MRO: \tHyst = {xgb_hyst:.3f}, TTT = {xgb_ttt}")
     logger.info(f"  Train Score: \t\t{xgb_score_train:.2f} ({percentage_difference(train_metric, xgb_score_train)})")
     logger.info(f"  Test Score:  \t\t{xgb_score_test:.2f} ({percentage_difference(test_metric, xgb_score_test)})\n")
 
-    logger.info(f"Reinforced MRO: \t\tHyst = {rl_hyst:.3f}, TTT = {rl_ttt}")
+    logger.info(f"Reinforced MRO: \tHyst = {rl_hyst:.3f}, TTT = {rl_ttt}")
     logger.info(f"  Train Score: \t\t{rl_score_train:.2f} ({percentage_difference(train_metric, rl_score_train)})")
     logger.info(f"  Test Score:  \t\t{rl_score_test:.2f} ({percentage_difference(test_metric, rl_score_test)})\n")
 
@@ -284,4 +284,4 @@ if __name__ == "__main__":
 
     logger.info("\n" + "=" * 100 + "\n")
     logger.info("MRO EVALUATION COMPLETED SUCCESSFULLY!")
-    logger.info("=" * 100 + "\n")
+    logger.info("\n" + "=" * 100 + "\n")
