@@ -19,7 +19,6 @@ from notebooks.radp_library import (
     check_cartesian_format,
     get_percell_data,
     normalize_cell_ids,
-    normalize_cell_id_keys,
     preprocess_ue_data,
 )
 from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin, NormMethod
@@ -184,11 +183,11 @@ class MobilityRobustnessOptimization(ABC):
 
                 if is_initial_training:
                     # For initial training, use stratified chunking to ensure all cell_ids are in the first chunk
-                    data_chunks = self.split_new_data(new_data, target_size = 5, stratify=True)
+                    data_chunks = self.split_new_data(new_data, target_size=5, stratify=True)
                     print(f"Initial training: Using stratified chunking into {len(data_chunks)} chunks.")
                 else:
                     # For updates, use regular chunking
-                    data_chunks = self.split_new_data(new_data, target_size = 5)
+                    data_chunks = self.split_new_data(new_data, target_size=5)
                     print(f"Update mode: Using regular chunking into {len(data_chunks)} chunks.")
 
                 for chunk_idx, chunk_data in enumerate(data_chunks):
@@ -203,7 +202,7 @@ class MobilityRobustnessOptimization(ABC):
 
                     if self.bayesian_digital_twins:
                         print("Updating existing Bayesian Digital Twins with new data.")
-                        self.solve(n_epochs=1, verbose = 0)
+                        self.solve(n_epochs=1, verbose=0)
 
                         for cell_id, df in prepared_data.items():
                             if cell_id in self.bayesian_digital_twins:
@@ -232,17 +231,17 @@ class MobilityRobustnessOptimization(ABC):
                 prepared_data = self._prepare_train_or_update_data(new_data)
 
                 if self.bayesian_digital_twins:
-                    
+
                     print(f"Prepared data contains {len(prepared_data)} cell_ids: {sorted(prepared_data.keys())}")
-                    
+
                     print("Updating existing Bayesian Digital Twins with new data.")
-                    
+
                     for cell_id, df in prepared_data.items():
                         if cell_id in self.bayesian_digital_twins:
                             self._update(cell_id, df)
                         else:
                             print(f"WARNING: No existing BDT for {cell_id}, skipping update.")
-                    
+
                     print("Bayesian Digital Twins updated successfully.")
 
                 # If no Bayesian Digital Twins exist, train from scratch
@@ -257,7 +256,7 @@ class MobilityRobustnessOptimization(ABC):
                     self._training(maxiter=100, train_data=prepared_data)
                     print(f"Bayesian Digital Twins trained successfully for cells: {sorted(prepared_data.keys())}")
 
-                    self.solve(n_epochs=1)
+                    self.solve(n_epochs=1, verbose=0)
 
         except TypeError as te:
             print(f"TypeError: {te}")
@@ -470,7 +469,9 @@ class MobilityRobustnessOptimization(ABC):
 
         for i, df in enumerate(train_per_cell_df_processed):
             train_cell_id = idx_cell_id_mapping[i + 1]
-            train_cell_id = f"cell_{int(train_cell_id)}" if not str(train_cell_id).startswith("cell_") else str(train_cell_id)
+            train_cell_id = (
+                f"cell_{int(train_cell_id)}" if not str(train_cell_id).startswith("cell_") else str(train_cell_id)
+            )
             training_data[train_cell_id] = df
 
         return training_data

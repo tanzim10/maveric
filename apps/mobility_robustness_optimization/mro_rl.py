@@ -55,7 +55,9 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         ttt_range = [2, num_ticks + 1]
 
         # Create and vectorize RL environment
-        env = DummyVecEnv([lambda: ReinforcedMROEnv(self.simulation_data, RLF_THRESHOLD, hyst_range, ttt_range)])
+        env = DummyVecEnv(
+            [lambda: ReinforcedMROEnv(self.simulation_data, RLF_THRESHOLD, hyst_range, ttt_range, verbose)]
+        )
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # PPO agent
@@ -69,17 +71,19 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         # Ensure ttt is an integer
         hyst, ttt = action[0]
         ttt = int(round(ttt))
-        print(f"\nOptimized Hyst: {hyst},\nOptimized TTT: {ttt}")
+        if verbose > 0:
+            print(f"\nOptimized Hyst: {hyst},\nOptimized TTT: {ttt}")
         return hyst, ttt
 
 
 class ReinforcedMROEnv(Env):
-    def __init__(self, df, rlf_threshold, hyst_range, ttt_range):
+    def __init__(self, df, rlf_threshold, hyst_range, ttt_range, verbose=1):
         super().__init__()
         self.df = df
         self.rlf_threshold = rlf_threshold
         self.hyst_range = hyst_range
         self.ttt_range = ttt_range
+        self.verbose = verbose
 
         self.action_space = Box(
             low=np.array([hyst_range[0], ttt_range[0]]),
@@ -109,14 +113,16 @@ class ReinforcedMROEnv(Env):
         terminated = self.current_step >= self.max_steps
         truncated = False  # Can be customized if needed
 
-        print(
-            f"Episode: {self.episode_num}, Timestep: {self.current_step}, "
-            f"Hyst: {hyst:.6f}, TTT: {ttt}, Reward: {reward:.6f}, Done: {terminated}"
-        )
+        if self.verbose > 0:
+            print(
+                f"Episode: {self.episode_num}, Timestep: {self.current_step}, "
+                f"Hyst: {hyst:.6f}, TTT: {ttt}, Reward: {reward:.6f}, Done: {terminated}"
+            )
 
         if terminated:
-            avg_reward = self.episode_reward / self.max_steps
-            print(f"Episode {self.episode_num} average reward: {avg_reward:.6f}\n")
+            if self.verbose > 0:
+                avg_reward = self.episode_reward / self.max_steps
+                print(f"Episode {self.episode_num} average reward: {avg_reward:.6f}\n")
             self.episode_num += 1
             self.episode_reward = 0.0
 
@@ -128,4 +134,5 @@ class ReinforcedMROEnv(Env):
         return self.state, {}
 
     def render(self):
-        print(f"Current State: {self.state}, Current Step: {self.current_step}")
+        if self.verbose > 0:
+            print(f"Current State: {self.state}, Current Step: {self.current_step}")

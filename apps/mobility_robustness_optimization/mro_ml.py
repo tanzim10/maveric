@@ -52,7 +52,7 @@ class BayesianMRO(MobilityRobustnessOptimization):
             )
             return GaussianProcessRegressor(kernel=kernel, normalize_y=True)
 
-    def solve(self, n_epochs=20, init_samples: int = 5, verbose: int = 0):
+    def solve(self, n_epochs=20, init_samples: int = 5, verbose: int = 1):
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
 
