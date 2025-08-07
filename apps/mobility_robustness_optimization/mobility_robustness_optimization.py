@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import torch
 import pandas as pd
 from gpytorch.kernels import RBFKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
@@ -40,10 +41,13 @@ class MobilityRobustnessOptimization(ABC):
         topology: pd.DataFrame,
         bdt: Optional[Dict[str, BayesianDigitalTwin]] = None,
     ):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.topology = topology
         self.bayesian_digital_twins = bdt if bdt is not None else {}
         self.mobility_model_params = mobility_model_params
         self.simulation_data = None
+        self.SIZE_LIMIT = 50.0 # MB
+        self.CHUNK_SIZE = 10 # MB
 
     def get_dataframe_size(self, df: pd.DataFrame) -> float:
         """
@@ -178,16 +182,16 @@ class MobilityRobustnessOptimization(ABC):
             # Determine if this is initial training (no existing BDTs)
             is_initial_training = len(self.bayesian_digital_twins) == 0
 
-            if new_data_size > 10:
+            if new_data_size > self.SIZE_LIMIT:
                 print("Large dataset detected, splitting into smaller chunks.")
 
                 if is_initial_training:
                     # For initial training, use stratified chunking to ensure all cell_ids are in the first chunk
-                    data_chunks = self.split_new_data(new_data, target_size=5, stratify=True)
+                    data_chunks = self.split_new_data(new_data, target_size=self.CHUNK_SIZE, stratify=True)
                     print(f"Initial training: Using stratified chunking into {len(data_chunks)} chunks.")
                 else:
                     # For updates, use regular chunking
-                    data_chunks = self.split_new_data(new_data, target_size=5)
+                    data_chunks = self.split_new_data(new_data, target_size=self.CHUNK_SIZE)
                     print(f"Update mode: Using regular chunking into {len(data_chunks)} chunks.")
 
                 for chunk_idx, chunk_data in enumerate(data_chunks):
@@ -359,6 +363,8 @@ class MobilityRobustnessOptimization(ABC):
                 norm_method=NormMethod.MINMAX,
             )
 
+            bayesian_digital_twins[train_cell_id].model = bayesian_digital_twins[train_cell_id].model.to(self.device)
+
             self.bayesian_digital_twins[train_cell_id] = bayesian_digital_twins[train_cell_id]
 
             loss_vs_iters.append(
@@ -402,12 +408,13 @@ class MobilityRobustnessOptimization(ABC):
         twin = self.bayesian_digital_twins[cell_id]
 
         # Reconfigure the kernel to include scale + RBF
-        twin.model.covar_module = ScaleKernel(RBFKernel())
+        twin.model.covar_module = ScaleKernel(RBFKernel()).to(self.device)
 
         # Increase observation noise via GaussianLikelihood
         if not hasattr(twin, "likelihood"):
             twin.likelihood = GaussianLikelihood()  # type: ignore
         twin.likelihood.noise = 1e-2  # type: ignore
+        twin.likelihood = twin.likelihood.to(self.device)
 
         # Use an increased jitter context
         with cholesky_jitter(1e-1):

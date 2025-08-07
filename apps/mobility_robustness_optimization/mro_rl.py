@@ -29,7 +29,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
     ):
         super().__init__(mobility_model_params, topology, bdt)
 
-    def solve(self, n_epochs=100, n_steps=64, batch_size=64, verbose: int = 0):
+    def solve(self, n_epochs=100, n_steps=64, batch_size=32, verbose: int = 0):
         """
         Trains a PPO agent to optimize hysteresis and TTT values.
         """

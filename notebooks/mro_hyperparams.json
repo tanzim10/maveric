@@ -1,10 +1,10 @@
 {
     "epochs": 100,
     "split_ratio": 0.80,
-    "batch_size": 64,
+    "batch_size": 32,
     "learning_rate": 0.001,
     "topology": "notebooks/data/mro_data/mro_topology.csv",
-    "ue_data": "notebooks/data/mro_data/UE(286)_TICKS(609).csv",
+    "ue_data": "notebooks/data/mro_data/UE(697)_TICKS(756).csv",
     "ue_data1": "notebooks/data/mro_data/UE_data_5UE_20ticks.csv",
     "ue_data2": "notebooks/data/mro_data/UE_data_2024-09-03_alpha_0.900_variance_0.200_BatchNum_5.csv",
     "bdt": "notebooks/data/mro_data/digital_twins.pkl",

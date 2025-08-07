@@ -26,7 +26,7 @@ def signal_handler(signum, frame):
     logger.critical("INTERRUPT SIGNAL RECEIVED!")
     logger.critical(f"Signal: {signum}")
     logger.critical("Gracefully stopping the MRO evaluation...")
-    logger.critical("=" * 100 + "\n")
+    logger.critical("n" + "=" * 100 + "\n")
 
     # You can add cleanup code here if needed
 
@@ -64,7 +64,7 @@ def run_gpr(params, topology, data, epochs):
 def run_rl_mro(params, topology, data, epochs):
     mro = ReinforcedMRO(params, topology)
     mro.train_or_update_rf_twins(data)
-    return mro.solve(n_epochs=epochs, verbose=1)
+    return mro.solve(n_epochs=epochs, verbose=1, batch_size=32)
 
 
 def run_naive_attachment(data, topology):
