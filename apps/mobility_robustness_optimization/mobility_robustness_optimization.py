@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import torch
 import pandas as pd
+import torch
 from gpytorch.kernels import RBFKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.settings import cholesky_jitter
@@ -46,8 +46,8 @@ class MobilityRobustnessOptimization(ABC):
         self.bayesian_digital_twins = bdt if bdt is not None else {}
         self.mobility_model_params = mobility_model_params
         self.simulation_data = None
-        self.SIZE_LIMIT = 50.0 # MB
-        self.CHUNK_SIZE = 10 # MB
+        self.SIZE_LIMIT = 50.0  # MB
+        self.CHUNK_SIZE = 10  # MB
 
     def get_dataframe_size(self, df: pd.DataFrame) -> float:
         """
@@ -752,7 +752,7 @@ def calculate_mro_metric(data: pd.DataFrame) -> float:
     # Calculate D
     D = T - (ns_handover_count * ts + nf_handover_count * t_nas)
 
-    return D
+    return D, ns_handover_count, nf_handover_count
 
 
 def _count_rlf(df: pd.DataFrame) -> int:

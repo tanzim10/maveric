@@ -37,6 +37,8 @@ class SimpleMRO(MobilityRobustnessOptimization):
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
 
+        # self.mobility_model_params['ue_tracks_generation']['params']['gauss_markov_params']['alpha'] = self.alpha
+
         # Generate and preprocess simulation data
         self.simulation_data = get_ue_data(self.mobility_model_params)
         self.simulation_data = self.simulation_data.rename(columns={"lat": "latitude", "lon": "longitude"})

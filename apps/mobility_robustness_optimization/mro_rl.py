@@ -90,9 +90,13 @@ class ReinforcedMROEnv(Env):
             high=np.array([hyst_range[1], ttt_range[1]]),
             dtype=np.float64,
         )
-        self.observation_space = Box(low=0, high=1, shape=(1,), dtype=np.float64)
+        self.observation_space = Box(
+            low=np.array([0, 0, 0, self.hyst_range[0], self.ttt_range[0]]),
+            high=np.array([1, np.inf, np.inf, self.hyst_range[1], self.ttt_range[1]]),
+            dtype=np.float64,
+        )
 
-        self.state = np.array([0.0])
+        self.state = np.array([0.0, 0.0, 0.0, 0.0, 2])
         self.current_step = 0
         self.max_steps = 20
         self.episode_num = 1
@@ -103,11 +107,11 @@ class ReinforcedMROEnv(Env):
         ttt = int(round(ttt))
 
         attached_df = perform_attachment_hyst_ttt(self.df, hyst, ttt, self.rlf_threshold)
-        mro_metric = calculate_mro_metric(attached_df)
+        mro_metric, ns, nf = calculate_mro_metric(attached_df)
 
         reward = mro_metric
         self.episode_reward += reward
-        self.state = np.array([reward])
+        self.state = np.array([reward, ns, nf, hyst, ttt])
         self.current_step += 1
 
         terminated = self.current_step >= self.max_steps
@@ -129,7 +133,7 @@ class ReinforcedMROEnv(Env):
         return self.state, reward, terminated, truncated, {}
 
     def reset(self, *, seed=None, options=None):
-        self.state = np.array([0.0])
+        self.state = np.array([0.0, 0.0, 0.0, 0.0, 2])
         self.current_step = 0
         return self.state, {}
 

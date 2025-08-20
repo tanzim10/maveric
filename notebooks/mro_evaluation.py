@@ -70,10 +70,10 @@ def run_rl_mro(params, topology, data, epochs):
 def run_naive_attachment(data, topology):
     data = data.rename(columns={"longitude": "loc_x", "latitude": "loc_y", "cell_rxpwr_dbm": "rxpower_dbm"})
     attached_df = perform_attachment(data, topology)
-    attached_df = reattach_columns(attached_df, data)
+    total_df = reattach_columns(attached_df, data)
 
-    ns, nf, no_change = count_handovers(attached_df)
-    return calculate_naive_mro_metric(ns, nf, data)
+    ns, nf, no_change = count_handovers(total_df)
+    return calculate_naive_mro_metric(ns, nf, data), attached_df
 
 
 def percentage_difference(x: float, y: float) -> str:
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     check_interrupt()  # Check before data loading
 
     topology = pd.read_csv(hyperparams["topology"])
-    ue_data = pd.read_csv(hyperparams["ue_data"])  # TODO: Change UE
+    ue_data = pd.read_csv(hyperparams["ue_data3"])  # TODO: Change UE
 
     epochs = hyperparams["epochs"]
     split_ratio = hyperparams["split_ratio"]
@@ -219,45 +219,61 @@ if __name__ == "__main__":
     logger.info("Simple")
     check_interrupt()
     attached_df = perform_attachment_hyst_ttt(train_data, s_hyst, s_ttt, rlf_threshold=RLF_THRESHOLD)
-    simple_score_train = calculate_mro_metric(attached_df)
+    simple_score_train, _, _ = calculate_mro_metric(attached_df)
+    simple_rx_train = attached_df["cell_rxpower_dbm"].mean()
     attached_df = perform_attachment_hyst_ttt(test_data, s_hyst, s_ttt, rlf_threshold=RLF_THRESHOLD)
-    simple_score_test = calculate_mro_metric(attached_df)
+    simple_score_test, _, _ = calculate_mro_metric(attached_df)
+    simple_rx_test = attached_df["cell_rxpower_dbm"].mean()
 
     # GPR MRO
     logger.info("GPR")
     check_interrupt()
     attached_df = perform_attachment_hyst_ttt(train_data, gpr_hyst, gpr_ttt, rlf_threshold=RLF_THRESHOLD)
-    gpr_score_train = calculate_mro_metric(attached_df)
+    gpr_score_train, _, _ = calculate_mro_metric(attached_df)
+    gpr_rx_train = attached_df["cell_rxpower_dbm"].mean()
     attached_df = perform_attachment_hyst_ttt(test_data, gpr_hyst, gpr_ttt, rlf_threshold=RLF_THRESHOLD)
-    gpr_score_test = calculate_mro_metric(attached_df)
+    gpr_score_test, _, _ = calculate_mro_metric(attached_df)
+    gpr_rx_test = attached_df["cell_rxpower_dbm"].mean()
 
     # Reinforced MRO
     check_interrupt()
     attached_df = perform_attachment_hyst_ttt(train_data, rl_hyst, rl_ttt, rlf_threshold=RLF_THRESHOLD)
-    rl_score_train = calculate_mro_metric(attached_df)
+    rl_score_train, _, _ = calculate_mro_metric(attached_df)
+    rl_rx_train = attached_df["cell_rxpower_dbm"].mean()
     attached_df = perform_attachment_hyst_ttt(test_data, rl_hyst, rl_ttt, rlf_threshold=RLF_THRESHOLD)
-    rl_score_test = calculate_mro_metric(attached_df)
+    rl_score_test, _, _ = calculate_mro_metric(attached_df)
+    rl_rx_test = attached_df["cell_rxpower_dbm"].mean()
 
     # XGBoost MRO
     logger.info("XGBoost")
     check_interrupt()
     attached_df = perform_attachment_hyst_ttt(train_data, xgb_hyst, xgb_ttt, rlf_threshold=RLF_THRESHOLD)
-    xgb_score_train = calculate_mro_metric(attached_df)
+    xgb_score_train, _, _ = calculate_mro_metric(attached_df)
+    xgb_rx_train = attached_df["cell_rxpower_dbm"].mean()
     attached_df = perform_attachment_hyst_ttt(test_data, xgb_hyst, xgb_ttt, rlf_threshold=RLF_THRESHOLD)
-    xgb_score_test = calculate_mro_metric(attached_df)
+    xgb_score_test, _, _ = calculate_mro_metric(attached_df)
+    xgb_rx_test = attached_df["cell_rxpower_dbm"].mean()
 
     # Base MRO Score
     logger.info("Naive Attachment\n")
     check_interrupt()
     train_data = train_data.rename(columns={"cell_rxpower_dbm": "rxpower_dbm", "ue_id": "mock_ue_id"})
     test_data = test_data.rename(columns={"cell_rxpower_dbm": "rxpower_dbm", "ue_id": "mock_ue_id"})
-    train_metric = run_naive_attachment(train_data, topology)
-    test_metric = run_naive_attachment(test_data, topology)
+    train_metric, base_train_df = run_naive_attachment(train_data, topology)
+    base_rx_train = base_train_df["rsrp_dbm"].mean()
+    test_metric, base_test_df = run_naive_attachment(test_data, topology)
+    base_rx_test = base_test_df["rsrp_dbm"].mean()
 
     logger.info("\n" + "=" * 100 + "\n")
 
     logger.info("Results Summary:")
     logger.info(f"Simple MRO: \t\tHyst = {s_hyst:.3f}, TTT = {s_ttt}")
+    logger.info(
+        f"  Mean RX_Power Train: \t{simple_rx_train:.2f} dBm ({percentage_difference(base_rx_train, simple_rx_train)})"
+    )
+    logger.info(
+        f"  Mean RX_Power Test:  \t{simple_rx_test:.2f} dBm ({percentage_difference(base_rx_test, simple_rx_test)})"
+    )
     logger.info(
         f"  Train Score: \t\t{simple_score_train:.2f} ({percentage_difference(train_metric, simple_score_train)})"
     )
@@ -266,14 +282,24 @@ if __name__ == "__main__":
     )
 
     logger.info(f"GPR MRO: \t\tHyst = {gpr_hyst:.3f}, TTT = {gpr_ttt}")
+    logger.info(
+        f"  Mean RX_Power Train: \t{gpr_rx_train:.2f} dBm ({percentage_difference(base_rx_train, gpr_rx_train)})"
+    )
+    logger.info(f"  Mean RX_Power Test:  \t{gpr_rx_test:.2f} dBm ({percentage_difference(base_rx_test, gpr_rx_test)})")
     logger.info(f"  Train Score: \t\t{gpr_score_train:.2f} ({percentage_difference(train_metric, gpr_score_train)})")
     logger.info(f"  Test Score: \t\t{gpr_score_test:.2f} ({percentage_difference(test_metric, gpr_score_test)})\n")
 
     logger.info(f"XGBoost MRO: \tHyst = {xgb_hyst:.3f}, TTT = {xgb_ttt}")
+    logger.info(
+        f"  Mean RX_Power Train: \t{xgb_rx_train:.2f} dBm ({percentage_difference(base_rx_train, xgb_rx_train)})"
+    )
+    logger.info(f"  Mean RX_Power Test:  \t{xgb_rx_test:.2f} dBm ({percentage_difference(base_rx_test, xgb_rx_test)})")
     logger.info(f"  Train Score: \t\t{xgb_score_train:.2f} ({percentage_difference(train_metric, xgb_score_train)})")
     logger.info(f"  Test Score:  \t\t{xgb_score_test:.2f} ({percentage_difference(test_metric, xgb_score_test)})\n")
 
     logger.info(f"Reinforced MRO: \tHyst = {rl_hyst:.3f}, TTT = {rl_ttt}")
+    logger.info(f"  Mean RX_Power Train: \t{rl_rx_train:.2f} dBm ({percentage_difference(base_rx_train, rl_rx_train)})")
+    logger.info(f"  Mean RX_Power Test:  \t{rl_rx_test:.2f} dBm ({percentage_difference(base_rx_test, rl_rx_test)})")
     logger.info(f"  Train Score: \t\t{rl_score_train:.2f} ({percentage_difference(train_metric, rl_score_train)})")
     logger.info(f"  Test Score:  \t\t{rl_score_test:.2f} ({percentage_difference(test_metric, rl_score_test)})\n")
 
