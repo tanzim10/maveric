@@ -73,7 +73,8 @@ class SimpleMRO(MobilityRobustnessOptimization):
             print(header)
             print("-" * len(header))
 
-        self.score.loc[len(self.score)] = [hyst, ttt, calculate_mro_metric(attached_df)]
+        mro_metric, _, _ = calculate_mro_metric(attached_df)
+        self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
         for i in range(epochs):
             while True:
                 hyst = np.random.uniform(hyst_range[0], hyst_range[1])
@@ -82,13 +83,15 @@ class SimpleMRO(MobilityRobustnessOptimization):
                     break
             # Perform attachment and calculate MRO Metric
             attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, rlf_threshold)
-            mro_metric = calculate_mro_metric(attached_df)
+            mro_metric, _, _ = calculate_mro_metric(attached_df)
 
             # Store the data in the score DataFrame
             self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
 
             if verbose == 1:
                 print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
+                print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
+                
 
         if verbose == 1:
             print(f"\nOptimized Hyst: {self.score.loc[self.score['score'].idxmax(), 'hyst']},")

@@ -6,7 +6,7 @@
     "topology": "notebooks/data/mro_data/mro_topology.csv",
     "ue_data": "notebooks/data/mro_data/UE(305)_TICKS(551).csv",
     "ue_data1": "notebooks/data/mro_data/UE_data_20UE_100ticks.csv",
-    "ue_data2": "notebooks/data/mro_data/UE_data_2024-09-03_alpha_0.900_variance_0.200_BatchNum_5.csv",
+    "ue_data2": "notebooks/data/mro_data/UE_data_2024-09-03_alpha_0.200_variance_0.800_BatchNum_5.csv",
     "ue_data3": "notebooks/data/mro_data/newFile.csv",
     "bdt": "notebooks/data/mro_data/digital_twins.pkl",
 

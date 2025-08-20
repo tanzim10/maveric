@@ -181,7 +181,7 @@ class TestMobilityRobustnessOptimization(unittest.TestCase):
         self.assertTrue(result["ue_id"].isna().all())
 
     def test_calculate_mro_metric(self):
-        result = calculate_mro_metric(self.df)
+        result, _, _ = calculate_mro_metric(self.df)
         self.assertEqual(result, 1.85)
 
     def test_update(self):

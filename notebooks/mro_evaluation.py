@@ -127,7 +127,7 @@ if __name__ == "__main__":
     check_interrupt()  # Check before data loading
 
     topology = pd.read_csv(hyperparams["topology"])
-    ue_data = pd.read_csv(hyperparams["ue_data3"])  # TODO: Change UE
+    ue_data = pd.read_csv(hyperparams["ue_data2"])  # TODO: Change UE
 
     epochs = hyperparams["epochs"]
     split_ratio = hyperparams["split_ratio"]

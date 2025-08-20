@@ -78,7 +78,7 @@ class BayesianMRO(MobilityRobustnessOptimization):
             hyst = np.random.uniform(hyst_range[0], hyst_range[1])
             ttt = np.random.randint(ttt_range[0], ttt_range[1])
             attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, rlf_threshold)
-            metric = calculate_mro_metric(attached_df)
+            metric, _, _ = calculate_mro_metric(attached_df)
             X.append([hyst, ttt])
             y.append(metric)
             self.score.loc[len(self.score)] = [hyst, ttt, metric]
@@ -99,7 +99,7 @@ class BayesianMRO(MobilityRobustnessOptimization):
             hyst, ttt = candidates[idx]
             ttt = int(round(ttt))
             attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, rlf_threshold)
-            metric = calculate_mro_metric(attached_df)
+            metric, _, _ = calculate_mro_metric(attached_df)
             X = np.vstack([X, [hyst, ttt]])
             y = np.append(y, metric)
             self.score.loc[len(self.score)] = [hyst, ttt, metric]
