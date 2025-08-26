@@ -89,9 +89,7 @@ class SimpleMRO(MobilityRobustnessOptimization):
             self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
 
             if verbose == 1:
-                print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
-                print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
-                
+                print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")                
 
         if verbose == 1:
             print(f"\nOptimized Hyst: {self.score.loc[self.score['score'].idxmax(), 'hyst']},")
@@ -99,4 +97,4 @@ class SimpleMRO(MobilityRobustnessOptimization):
 
         return self.score.loc[self.score["score"].idxmax(), "hyst"], int(
             self.score.loc[self.score["score"].idxmax(), "ttt"]
-        )
+        ),self.score

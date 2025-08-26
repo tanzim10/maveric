@@ -5,7 +5,7 @@ import sys
 import time
 
 import pandas as pd
-from radp_library import calculate_naive_mro_metric, count_handovers, preprocess_ue_data, reattach_columns
+from radp_library import calculate_naive_mro_metric, count_handovers, preprocess_ue_data, reattach_columns, mro_score_3d_plot
 
 from apps.mobility_robustness_optimization.mobility_robustness_optimization import calculate_mro_metric
 from apps.mobility_robustness_optimization.mro_ml import BayesianMRO
@@ -168,9 +168,10 @@ if __name__ == "__main__":
     logger.info("\n" + "=" * 100 + "\n")
 
     check_interrupt()  # Check before Simple MRO
-    s_hyst, s_ttt = timed_run(
+    s_hyst, s_ttt, score = timed_run(
         logger, f"Simple MRO on {epochs} epochs", run_simple_mro, params, topology, train_data, epochs
     )
+    mro_score_3d_plot(score, "simple_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 

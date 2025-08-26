@@ -1470,12 +1470,13 @@ def plot_sinr_db_by_ue(df: pd.DataFrame, df2: pd.DataFrame, ue_id: int) -> None:
     plt.show()
 
 
-def mro_score_3d_plot(df: pd.DataFrame) -> None:
+def mro_score_3d_plot(df: pd.DataFrame, file_path: str) -> None:
     """
-    Create an interactive 3D scatter plot using Plotly.
+    Create an interactive 3D scatter plot using Plotly and save it as an HTML file.
 
     Parameters:
     - df (pd.DataFrame): A DataFrame with columns ['hyst', 'ttt', 'score']
+    - file_path (str): The file path where the plot will be saved
     """
     # Validate input
     required_cols = {"hyst", "ttt", "score"}
@@ -1494,7 +1495,10 @@ def mro_score_3d_plot(df: pd.DataFrame) -> None:
     )
     fig.update_traces(marker=dict(size=5))
     fig.update_layout(margin=dict(l=0, r=0, b=0, t=30))
-    fig.show()
+
+    # Save the plot as an HTML file
+    fig.write_html(file_path)
+    print(f"Plot saved to {file_path}")
 
 
 def count_handovers(df):
