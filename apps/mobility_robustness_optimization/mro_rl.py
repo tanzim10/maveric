@@ -68,9 +68,15 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         hyst_range = [0, max_diff]
         ttt_range = [2, num_ticks + 1]
 
+        # Calculate the max_steps based on the total_timesteps and n_epochs to ensure n_epochs episodes
+        # each episode will have the same number of steps to match the number of epochs with the no. of episodes
+        max_steps = total_timesteps // n_epochs  # Adjusted max_steps to make sure episodes == n_epochs
+
         # Parallel environment creation using SubprocVecEnv
         def make_env():
-            return ReinforcedMROEnv(self.simulation_data, RLF_THRESHOLD, hyst_range, ttt_range, verbose=verbose)
+            return ReinforcedMROEnv(
+                self.simulation_data, RLF_THRESHOLD, hyst_range, ttt_range, max_steps=max_steps, verbose=verbose
+            )
 
         num_envs = 4  # Using 4 parallel environments for faster training (adjust as needed)
         env = SubprocVecEnv([make_env for _ in range(num_envs)])
@@ -100,12 +106,13 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
 
 
 class ReinforcedMROEnv(Env):
-    def __init__(self, df, rlf_threshold, hyst_range, ttt_range, verbose=1):
+    def __init__(self, df, rlf_threshold, hyst_range, ttt_range, max_steps, verbose=1):
         super().__init__()
         self.df = df
         self.rlf_threshold = rlf_threshold
         self.hyst_range = hyst_range
         self.ttt_range = ttt_range
+        self.max_steps = max_steps  # Now max_steps is passed from the parent
         self.verbose = verbose
 
         self.action_space = Box(
@@ -121,7 +128,6 @@ class ReinforcedMROEnv(Env):
 
         self.state = np.array([-1e6, 0.0, 0.0, 2])
         self.current_step = 0
-        self.max_steps = 20
         self.episode_num = 1
         self.episode_reward = -1e6
 
@@ -172,9 +178,8 @@ class ReinforcedMROEnv(Env):
             )
 
         if terminated:
-            if self.verbose > 0:
-                avg_reward = self.episode_reward / self.max_steps
-                self.logger.info(f"Episode {self.episode_num} average reward: {avg_reward:.6f}\n")
+            avg_reward = self.episode_reward / self.max_steps
+            self.logger.info(f"Episode {self.episode_num} average reward: {avg_reward:.6f}\n")
             self.episode_num += 1
             self.episode_reward = 0.0
 
