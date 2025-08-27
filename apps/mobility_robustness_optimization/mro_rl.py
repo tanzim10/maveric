@@ -34,7 +34,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         )
         self.logger = logging.getLogger(__name__)
         # will be filled during solve()
-        self.score: pd.DataFrame = pd.DataFrame(columns=["hyst", "ttt", "reward"])
+        self.score: pd.DataFrame = pd.DataFrame(columns=["hyst", "ttt", "score"])
 
     def solve(
         self,
@@ -51,7 +51,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         best_hyst : float
         best_ttt  : int
         score_df  : pd.DataFrame
-            Columns: ['hyst','ttt','reward'] for each attempt during training.
+            Columns: ['hyst','ttt','score'] for each attempt during training.
         """
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
@@ -90,7 +90,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         base_env: ReinforcedMROEnv = env.envs[0]
 
         # Fill self.score
-        self.score = pd.DataFrame(base_env.attempts, columns=["hyst", "ttt", "reward"])
+        self.score = pd.DataFrame(base_env.attempts, columns=["hyst", "ttt", "score"])
 
         best_hyst = float(base_env.best_hyst)
         best_ttt = int(base_env.best_ttt)
