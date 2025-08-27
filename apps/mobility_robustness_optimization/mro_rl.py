@@ -120,12 +120,12 @@ class ReinforcedMROEnv(Env):
             dtype=np.float64,
         )
         self.observation_space = Box(
-            low=np.array([0, 0, 0, self.hyst_range[0], self.ttt_range[0]]),
-            high=np.array([1, 1e6, 1e6, self.hyst_range[1], self.ttt_range[1]]),
+            low=np.array([-np.inf, -np.inf, self.hyst_range[0], self.ttt_range[0]]),  # reward, avg_rxrp, hyst, ttt
+            high=np.array([np.inf, 0.0, self.hyst_range[1], self.ttt_range[1]]),  # reward, avg_rxrp, hyst, ttt
             dtype=np.float64,
         )
 
-        self.state = np.array([0.0, 0.0, 0.0, 0.0, 2])
+        self.state = np.array([-np.inf, 0.0, 0.0, 2])
         self.current_step = 0
         self.max_steps = 20
         self.episode_num = 1
@@ -150,11 +150,12 @@ class ReinforcedMROEnv(Env):
         hyst = float(hyst)
 
         attached_df = perform_attachment_hyst_ttt(self.df, hyst, ttt, self.rlf_threshold)
+        avg_rxrp = attached_df["cell_rxpower_dbm"].mean()
         mro_metric, _, _ = calculate_mro_metric(attached_df)
 
         reward = float(mro_metric)
         self.episode_reward += reward
-        self.state = np.array([reward, 0.0, 0.0, hyst, float(ttt)], dtype=np.float64)
+        self.state = np.array([reward, avg_rxrp, hyst, float(ttt)], dtype=np.float64)
         self.current_step += 1
 
         # Log attempt
@@ -184,7 +185,7 @@ class ReinforcedMROEnv(Env):
         return self.state, reward, terminated, truncated, {}
 
     def reset(self, *, seed=None, options=None):
-        self.state = np.array([0.0, 0.0, 0.0, 0.0, 2], dtype=np.float64)
+        self.state = np.array([-np.inf, 0.0, 0.0, 2], dtype=np.float64)
         self.current_step = 0
         return self.state, {}
 
