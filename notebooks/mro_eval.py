@@ -34,8 +34,6 @@ def signal_handler(signum, frame):
     logger.critical("Gracefully stopping the MRO evaluation...")
     logger.critical("\n" + "=" * 100 + "\n")
 
-    # You can add cleanup code here if needed
-
     # Exit the program
     sys.exit(0)
 
@@ -52,25 +50,29 @@ def check_interrupt():
 def run_simple_mro(params, topology, data, epochs):
     mro = SimpleMRO(params, topology)
     mro.train_or_update_rf_twins(data)
+    logger.info("RF Twins trained. Starting optimization...")
     return mro.solve(n_epochs=epochs, verbose=1)
 
 
 def run_xgboost(params, topology, data, epochs):
     mro = BayesianMRO(params, topology, model_type="xgboost")
     mro.train_or_update_rf_twins(data)
+    logger.info("RF Twins trained. Starting optimization...")
     return mro.solve(n_epochs=epochs, verbose=1)
 
 
 def run_gpr(params, topology, data, epochs):
     mro = BayesianMRO(params, topology)
     mro.train_or_update_rf_twins(data)
+    logger.info("RF Twins trained. Starting optimization...")
     return mro.solve(n_epochs=epochs, verbose=1)
 
 
 def run_rl_mro(params, topology, data, epochs):
     mro = ReinforcedMRO(params, topology)
     mro.train_or_update_rf_twins(data)
-    return mro.solve(n_epochs=epochs, verbose=1, batch_size=32)
+    logger.info("RF Twins trained. Starting optimization...")
+    return mro.solve(n_epochs=epochs, verbose=2, batch_size=32)
 
 
 def run_naive_attachment(data, topology):
@@ -78,7 +80,8 @@ def run_naive_attachment(data, topology):
     attached_df = perform_attachment(data, topology)
     total_df = reattach_columns(attached_df, data)
 
-    ns, nf, no_change = count_handovers(total_df)
+    ns, nf, _ = count_handovers(total_df)
+    logger.info("Naive attachment completed. Handovers counted.")
     return calculate_naive_mro_metric(ns, nf, data), attached_df
 
 
@@ -177,7 +180,7 @@ if __name__ == "__main__":
     s_hyst, s_ttt, score = timed_run(
         logger, f"Simple MRO on {epochs} epochs", run_simple_mro, params, topology, train_data, epochs
     )
-    mro_score_3d_plot(score, "simple_mro_plot.html")
+    mro_score_3d_plot(score, "notebooks/plots/simple_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 
@@ -185,7 +188,7 @@ if __name__ == "__main__":
     xgb_hyst, xgb_ttt, score = timed_run(
         logger, f"XGBoost MRO on {epochs} Epochs", run_xgboost, params, topology, train_data, epochs
     )
-    mro_score_3d_plot(score, "xgboost_mro_plot.html")
+    mro_score_3d_plot(score, "notebooks/plots/xgboost_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 
@@ -193,7 +196,7 @@ if __name__ == "__main__":
     gpr_hyst, gpr_ttt, score = timed_run(
         logger, f"GPR MRO on {epochs} Epochs", run_gpr, params, topology, train_data, epochs
     )
-    mro_score_3d_plot(score, "gpr_mro_plot.html")
+    mro_score_3d_plot(score, "notebooks/plots/gpr_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 
@@ -201,7 +204,7 @@ if __name__ == "__main__":
     rl_hyst, rl_ttt, score = timed_run(
         logger, f"Reinforced MRO on {epochs} Epochs", run_rl_mro, params, topology, train_data, epochs
     )
-    mro_score_3d_plot(score, "reinforced_mro_plot.html")
+    mro_score_3d_plot(score, "notebooks/plots/reinforced_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 

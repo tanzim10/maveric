@@ -7,7 +7,7 @@ import torch
 from gymnasium import Env
 from gymnasium.spaces import Box
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv  # Use SubprocVecEnv for parallel environments
 
 from notebooks.radp_library import get_ue_data
 from radp.digital_twin.rf.bayesian.bayesian_engine import BayesianDigitalTwin
@@ -30,7 +30,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
     ):
         super().__init__(mobility_model_params, topology, bdt)
         logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         self.logger = logging.getLogger(__name__)
         # will be filled during solve()
@@ -41,17 +41,11 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         n_epochs: int = 100,
         n_steps: int = 64,
         batch_size: int = 32,
-        verbose: int = 0,
+        verbose: int = 2,  # Set verbosity level to high
     ) -> Tuple[float, int, pd.DataFrame]:
         """
         Trains a PPO agent to optimize hysteresis and TTT values.
-
-        Returns
-        -------
-        best_hyst : float
-        best_ttt  : int
-        score_df  : pd.DataFrame
-            Columns: ['hyst','ttt','score'] for each attempt during training.
+        Returns best hyst, best ttt, and the score dataframe.
         """
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
@@ -68,17 +62,18 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         _, full_prediction_df = self._predictions(self.simulation_data)
         self.simulation_data = self._preprocess_simulation_data(full_prediction_df)
 
-        # Define parameter ranges
+        # Define constant ranges from the dataframe
         max_diff = find_hyst_diff(self.simulation_data)
         num_ticks = self.simulation_data["tick"].nunique()
         hyst_range = [0, max_diff]
         ttt_range = [2, num_ticks + 1]
 
-        # Create and vectorize RL environment
+        # Parallel environment creation using SubprocVecEnv
         def make_env():
             return ReinforcedMROEnv(self.simulation_data, RLF_THRESHOLD, hyst_range, ttt_range, verbose=verbose)
 
-        env = DummyVecEnv([make_env])
+        num_envs = 4  # Using 4 parallel environments for faster training (adjust as needed)
+        env = SubprocVecEnv([make_env for _ in range(num_envs)])
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -86,12 +81,11 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         model = PPO("MlpPolicy", env, verbose=verbose, n_steps=n_steps, batch_size=batch_size, device=device)
         model.learn(total_timesteps)
 
-        # Grab the underlying env to pull logs and best action
+        # Fetch results from environment
         base_env: ReinforcedMROEnv = env.envs[0]
 
-        # Fill self.score
+        # Fill self.score with results
         self.score = pd.DataFrame(base_env.attempts, columns=["hyst", "ttt", "score"])
-
         best_hyst = float(base_env.best_hyst)
         best_ttt = int(base_env.best_ttt)
 
@@ -120,27 +114,27 @@ class ReinforcedMROEnv(Env):
             dtype=np.float64,
         )
         self.observation_space = Box(
-            low=np.array([-np.inf, -np.inf, self.hyst_range[0], self.ttt_range[0]]),  # reward, avg_rxrp, hyst, ttt
-            high=np.array([np.inf, 0.0, self.hyst_range[1], self.ttt_range[1]]),  # reward, avg_rxrp, hyst, ttt
+            low=np.array([-1e6, -1e6, self.hyst_range[0], self.ttt_range[0]]),  # reward, avg_rxrp, hyst, ttt
+            high=np.array([1e6, 0.0, self.hyst_range[1], self.ttt_range[1]]),  # reward, avg_rxrp, hyst, ttt
             dtype=np.float64,
         )
 
-        self.state = np.array([-np.inf, 0.0, 0.0, 2])
+        self.state = np.array([-1e6, 0.0, 0.0, 2])
         self.current_step = 0
         self.max_steps = 20
         self.episode_num = 1
-        self.episode_reward = 0.0
+        self.episode_reward = -1e6
 
         # Attempt logging
         self.attempts = []  # rows: [hyst, ttt, reward]
 
         # Track best observed action
-        self.best_reward = -np.inf
+        self.best_reward = -1e6
         self.best_hyst = 0.0
         self.best_ttt = 2
 
         logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         self.logger = logging.getLogger(__name__)
 
@@ -153,7 +147,9 @@ class ReinforcedMROEnv(Env):
         avg_rxrp = attached_df["cell_rxpower_dbm"].mean()
         mro_metric, _, _ = calculate_mro_metric(attached_df)
 
-        reward = float(mro_metric)
+        # Primary reward is MRO score; Secondary reward is avg_rxrp
+        reward = float(mro_metric) + 0.1 * avg_rxrp  # MRO metric weighted higher
+
         self.episode_reward += reward
         self.state = np.array([reward, avg_rxrp, hyst, float(ttt)], dtype=np.float64)
         self.current_step += 1
@@ -185,7 +181,7 @@ class ReinforcedMROEnv(Env):
         return self.state, reward, terminated, truncated, {}
 
     def reset(self, *, seed=None, options=None):
-        self.state = np.array([-np.inf, 0.0, 0.0, 2], dtype=np.float64)
+        self.state = np.array([-1e6, 0.0, 0.0, 2], dtype=np.float64)
         self.current_step = 0
         return self.state, {}
 

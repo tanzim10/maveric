@@ -1,5 +1,6 @@
 import logging
 import warnings
+from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -43,8 +44,6 @@ class SimpleMRO(MobilityRobustnessOptimization):
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
 
-        # self.mobility_model_params['ue_tracks_generation']['params']['gauss_markov_params']['alpha'] = self.alpha
-
         # Generate and preprocess simulation data
         self.simulation_data = get_ue_data(self.mobility_model_params)
         self.simulation_data = self.simulation_data.rename(columns={"lat": "latitude", "lon": "longitude"})
@@ -53,11 +52,10 @@ class SimpleMRO(MobilityRobustnessOptimization):
             self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
 
         # Predict power and perform attachment
-        predictions, full_prediction_df = self._predictions(self.simulation_data)
+        _, full_prediction_df = self._predictions(self.simulation_data)
         self.simulation_data = full_prediction_df
         self.simulation_data = self._preprocess_simulation_data(self.simulation_data)
 
-        # epochs = 100
         epochs = n_epochs
         hyst = 0.01
         ttt = 5
@@ -79,30 +77,43 @@ class SimpleMRO(MobilityRobustnessOptimization):
             self.logger.info(header)
             self.logger.info("-" * len(header))
 
+        # Perform initial MRO metric calculation
+        attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, rlf_threshold)
         mro_metric, _, _ = calculate_mro_metric(attached_df)
         self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
-        for i in range(epochs):
-            while True:
-                hyst = np.random.uniform(hyst_range[0], hyst_range[1])
-                ttt = np.random.randint(ttt_range[0], ttt_range[1])
-                if ttt not in self.score["ttt"].values or hyst not in self.score["hyst"].values:
-                    break
-            # Perform attachment and calculate MRO Metric
-            attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, rlf_threshold)
-            mro_metric, _, _ = calculate_mro_metric(attached_df)
 
-            # Store the data in the score DataFrame
-            self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
+        # Parallelize the MRO metric calculation across epochs
+        with ProcessPoolExecutor() as executor:
+            futures = []
+            for i in range(epochs):
+                while True:
+                    hyst = np.random.uniform(hyst_range[0], hyst_range[1])
+                    ttt = np.random.randint(ttt_range[0], ttt_range[1])
+                    if ttt not in self.score["ttt"].values or hyst not in self.score["hyst"].values:
+                        break
+                # Submit task for parallel processing
+                futures.append(executor.submit(self._calculate_epoch_mro, hyst, ttt))
 
-            if verbose == 1:
-                self.logger.info(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
+            # Collect the results
+            for future in futures:
+                hyst, ttt, mro_metric = future.result()
+                self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
 
         if verbose == 1:
             self.logger.info(f"\nOptimized Hyst: {self.score.loc[self.score['score'].idxmax(), 'hyst']},")
-            self.logger.info(f"Optimized TTT: {int(self.score.loc[self.score['score'].idxmax(), 'ttt'])}")
+            self.logger.info(f"\nOptimized TTT: {int(self.score.loc[self.score['score'].idxmax(), 'ttt'])}")
 
         return (
             self.score.loc[self.score["score"].idxmax(), "hyst"],
             int(self.score.loc[self.score["score"].idxmax(), "ttt"]),
             self.score,
         )
+
+    def _calculate_epoch_mro(self, hyst, ttt):
+        """
+        Calculate MRO metric for a given hyst and ttt values. This will run in parallel for each epoch.
+        """
+        attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, RLF_THRESHOLD)
+        mro_metric, _, _ = calculate_mro_metric(attached_df)
+        self.logger.info(f"Calculated MRO Metric: Hyst = {hyst}, TTT = {ttt}, Score = {mro_metric}")
+        return hyst, ttt, mro_metric
