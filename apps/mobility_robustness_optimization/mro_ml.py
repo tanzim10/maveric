@@ -1,4 +1,5 @@
-from typing import Any, Dict, Optional
+import logging
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -25,9 +26,17 @@ class BayesianMRO(MobilityRobustnessOptimization):
         bdt: Optional[Dict[str, BayesianDigitalTwin]] = None,
         model_type: str = "gpr",
     ):
+        # Set up logging first
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        self.logger = logging.getLogger(__name__)
         super().__init__(mobility_model_params, topology, bdt)
         self.model_type = model_type
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # will be filled by solve()
+        self.score: pd.DataFrame = pd.DataFrame(columns=["iter", "hyst", "ttt", "score"])
 
     def _expected_improvement(self, X: np.ndarray, model, best_y: float) -> np.ndarray:
         if self.model_type == "xgboost":
@@ -52,10 +61,26 @@ class BayesianMRO(MobilityRobustnessOptimization):
             )
             return GaussianProcessRegressor(kernel=kernel, normalize_y=True)
 
-    def solve(self, n_epochs=20, init_samples: int = 5, verbose: int = 1):
+    def solve(self, n_epochs: int = 20, init_samples: int = 5, verbose: int = 1) -> Tuple[float, int, pd.DataFrame]:
+        """
+        Runs Bayesian optimization for hysteresis (hyst) and time-to-trigger (ttt).
+
+        Returns
+        -------
+        best_hyst : float
+        best_ttt  : int
+        score_df  : pd.DataFrame
+            Columns: ['iter', 'hyst', 'ttt', 'score'], each row is an attempted evaluation.
+        """
+        if init_samples <= 0:
+            raise ValueError("init_samples must be > 0")
+        if n_epochs < 0:
+            raise ValueError("n_epochs must be >= 0")
+
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
 
+        # Prepare simulation data
         self.simulation_data = get_ue_data(self.mobility_model_params)
         self.simulation_data = self.simulation_data.rename(columns={"lat": "latitude", "lon": "longitude"})
 
@@ -71,45 +96,62 @@ class BayesianMRO(MobilityRobustnessOptimization):
         hyst_range = [0, max_diff]
         ttt_range = [2, num_ticks + 1]
 
-        self.score = pd.DataFrame(columns=["hyst", "ttt", "score"])
+        # reset score DF
+        self.score = pd.DataFrame(columns=["iter", "hyst", "ttt", "score"])
 
+        # Initial design
         X, y = [], []
+        iter_counter = 0
         for _ in range(init_samples):
-            hyst = np.random.uniform(hyst_range[0], hyst_range[1])
-            ttt = np.random.randint(ttt_range[0], ttt_range[1])
+            hyst = float(np.random.uniform(hyst_range[0], hyst_range[1]))
+            ttt = int(np.random.randint(ttt_range[0], ttt_range[1]))
             attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, rlf_threshold)
             metric, _, _ = calculate_mro_metric(attached_df)
+
             X.append([hyst, ttt])
             y.append(metric)
-            self.score.loc[len(self.score)] = [hyst, ttt, metric]
+            self.score.loc[len(self.score)] = [iter_counter, hyst, ttt, float(metric)]
+            iter_counter += 1
 
-        X = np.array(X)
-        y = np.array(y)
+        X = np.array(X, dtype=float)
+        y = np.array(y, dtype=float)
         model = self._init_model()
-        best_y = y.max()
-        best_idx = y.argmax()
+        best_y = float(y.max())
+        best_idx = int(y.argmax())
 
+        # Bayesian optimization loop
         for _ in range(n_epochs):
             model.fit(X, y)
-            cand_hyst = np.random.uniform(hyst_range[0], hyst_range[1], size=100)
-            cand_ttt = np.random.randint(ttt_range[0], ttt_range[1], size=100)
+
+            cand_hyst = np.random.uniform(hyst_range[0], hyst_range[1], size=256)
+            cand_ttt = np.random.randint(ttt_range[0], ttt_range[1], size=256)
             candidates = np.column_stack([cand_hyst, cand_ttt])
+
             scores = self._expected_improvement(candidates, model, best_y)
             idx = int(np.argmax(scores))
-            hyst, ttt = candidates[idx]
-            ttt = int(round(ttt))
+            hyst, ttt = float(candidates[idx, 0]), int(round(candidates[idx, 1]))
+
             attached_df = perform_attachment_hyst_ttt(self.simulation_data, hyst, ttt, rlf_threshold)
             metric, _, _ = calculate_mro_metric(attached_df)
-            X = np.vstack([X, [hyst, ttt]])
-            y = np.append(y, metric)
-            self.score.loc[len(self.score)] = [hyst, ttt, metric]
+
+            X = np.vstack([X, [hyst, float(ttt)]])
+            y = np.append(y, float(metric))
+
+            self.score.loc[len(self.score)] = [iter_counter, hyst, ttt, float(metric)]
+            iter_counter += 1
+
             if metric > best_y:
-                best_y = metric
+                best_y = float(metric)
                 best_idx = len(y) - 1
 
         best_hyst = float(X[best_idx, 0])
         best_ttt = int(round(X[best_idx, 1]))
 
         if verbose == 1:
-            print(f"\nOptimized Hyst: {best_hyst},\nOptimized TTT: {best_ttt}")
-        return best_hyst, best_ttt
+            self.logger.info(
+                f"\nOptimized Hyst: {best_hyst},\nOptimized TTT: {best_ttt},\nBest Score: {best_y:.6f}, "
+                f"Total evals: {len(self.score)}"
+            )
+
+        # return a copy so callers can't mutate our internal DF inadvertently
+        return best_hyst, best_ttt, self.score.copy()

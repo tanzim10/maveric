@@ -5,7 +5,13 @@ import sys
 import time
 
 import pandas as pd
-from radp_library import calculate_naive_mro_metric, count_handovers, preprocess_ue_data, reattach_columns, mro_score_3d_plot
+from radp_library import (
+    calculate_naive_mro_metric,
+    count_handovers,
+    mro_score_3d_plot,
+    preprocess_ue_data,
+    reattach_columns,
+)
 
 from apps.mobility_robustness_optimization.mobility_robustness_optimization import calculate_mro_metric
 from apps.mobility_robustness_optimization.mro_ml import BayesianMRO
@@ -26,7 +32,7 @@ def signal_handler(signum, frame):
     logger.critical("INTERRUPT SIGNAL RECEIVED!")
     logger.critical(f"Signal: {signum}")
     logger.critical("Gracefully stopping the MRO evaluation...")
-    logger.critical("n" + "=" * 100 + "\n")
+    logger.critical("\n" + "=" * 100 + "\n")
 
     # You can add cleanup code here if needed
 
@@ -176,21 +182,26 @@ if __name__ == "__main__":
     logger.info("\n" + "=" * 100 + "\n")
 
     check_interrupt()  # Check before XGBoost MRO
-    xgb_hyst, xgb_ttt = timed_run(
+    xgb_hyst, xgb_ttt, score = timed_run(
         logger, f"XGBoost MRO on {epochs} Epochs", run_xgboost, params, topology, train_data, epochs
     )
+    mro_score_3d_plot(score, "xgboost_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 
     check_interrupt()  # Check before GPR MRO
-    gpr_hyst, gpr_ttt = timed_run(logger, f"GPR MRO on {epochs} Epochs", run_gpr, params, topology, train_data, epochs)
+    gpr_hyst, gpr_ttt, score = timed_run(
+        logger, f"GPR MRO on {epochs} Epochs", run_gpr, params, topology, train_data, epochs
+    )
+    mro_score_3d_plot(score, "gpr_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 
     check_interrupt()  # Check before Reinforced MRO
-    rl_hyst, rl_ttt = timed_run(
+    rl_hyst, rl_ttt, score = timed_run(
         logger, f"Reinforced MRO on {epochs} Epochs", run_rl_mro, params, topology, train_data, epochs
     )
+    mro_score_3d_plot(score, "reinforced_mro_plot.html")
 
     logger.info("\n" + "=" * 100 + "\n")
 

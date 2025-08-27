@@ -1,3 +1,4 @@
+import logging
 import warnings
 from typing import Any, Dict, Optional
 
@@ -27,6 +28,11 @@ class SimpleMRO(MobilityRobustnessOptimization):
         topology: pd.DataFrame,
         bdt: Optional[Dict[str, BayesianDigitalTwin]] = None,
     ):
+        # Set up logging first
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        self.logger = logging.getLogger(__name__)
         super().__init__(mobility_model_params, topology, bdt)
 
     def solve(self, n_epochs=100, verbose=1):
@@ -70,8 +76,8 @@ class SimpleMRO(MobilityRobustnessOptimization):
 
         if verbose == 1:
             header = f"{'Epoch':<6} {'Hyst':<14} {'TTT':<6} {'MRO Metric':<12}"
-            print(header)
-            print("-" * len(header))
+            self.logger.info(header)
+            self.logger.info("-" * len(header))
 
         mro_metric, _, _ = calculate_mro_metric(attached_df)
         self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
@@ -89,12 +95,14 @@ class SimpleMRO(MobilityRobustnessOptimization):
             self.score.loc[len(self.score)] = [hyst, ttt, mro_metric]
 
             if verbose == 1:
-                print(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")                
+                self.logger.info(f"{i:<6} {hyst:<14.10f} {ttt:<6} {mro_metric:<12.6f}")
 
         if verbose == 1:
-            print(f"\nOptimized Hyst: {self.score.loc[self.score['score'].idxmax(), 'hyst']},")
-            print(f"Optimized TTT: {int(self.score.loc[self.score['score'].idxmax(), 'ttt'])}")
+            self.logger.info(f"\nOptimized Hyst: {self.score.loc[self.score['score'].idxmax(), 'hyst']},")
+            self.logger.info(f"Optimized TTT: {int(self.score.loc[self.score['score'].idxmax(), 'ttt'])}")
 
-        return self.score.loc[self.score["score"].idxmax(), "hyst"], int(
-            self.score.loc[self.score["score"].idxmax(), "ttt"]
-        ),self.score
+        return (
+            self.score.loc[self.score["score"].idxmax(), "hyst"],
+            int(self.score.loc[self.score["score"].idxmax(), "ttt"]),
+            self.score,
+        )

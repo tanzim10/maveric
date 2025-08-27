@@ -1,4 +1,5 @@
-from typing import Optional
+import logging
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -28,10 +29,29 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         bdt: Optional[dict[str, BayesianDigitalTwin]] = None,
     ):
         super().__init__(mobility_model_params, topology, bdt)
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        self.logger = logging.getLogger(__name__)
+        # will be filled during solve()
+        self.score: pd.DataFrame = pd.DataFrame(columns=["hyst", "ttt", "reward"])
 
-    def solve(self, n_epochs=100, n_steps=64, batch_size=32, verbose: int = 0):
+    def solve(
+        self,
+        n_epochs: int = 100,
+        n_steps: int = 64,
+        batch_size: int = 32,
+        verbose: int = 0,
+    ) -> Tuple[float, int, pd.DataFrame]:
         """
         Trains a PPO agent to optimize hysteresis and TTT values.
+
+        Returns
+        -------
+        best_hyst : float
+        best_ttt  : int
+        score_df  : pd.DataFrame
+            Columns: ['hyst','ttt','reward'] for each attempt during training.
         """
         if not self.bayesian_digital_twins:
             raise ValueError("Bayesian Digital Twins are not trained. Train the models before calculating metrics.")
@@ -45,7 +65,7 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         if self.topology["cell_id"].dtype == int:
             self.topology["cell_id"] = self.topology["cell_id"].apply(lambda x: f"cell_{int(x)}")
 
-        predictions, full_prediction_df = self._predictions(self.simulation_data)
+        _, full_prediction_df = self._predictions(self.simulation_data)
         self.simulation_data = self._preprocess_simulation_data(full_prediction_df)
 
         # Define parameter ranges
@@ -55,25 +75,34 @@ class ReinforcedMRO(MobilityRobustnessOptimization):
         ttt_range = [2, num_ticks + 1]
 
         # Create and vectorize RL environment
-        env = DummyVecEnv(
-            [lambda: ReinforcedMROEnv(self.simulation_data, RLF_THRESHOLD, hyst_range, ttt_range, verbose)]
-        )
+        def make_env():
+            return ReinforcedMROEnv(self.simulation_data, RLF_THRESHOLD, hyst_range, ttt_range, verbose=verbose)
+
+        env = DummyVecEnv([make_env])
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
+
         # PPO agent
         model = PPO("MlpPolicy", env, verbose=verbose, n_steps=n_steps, batch_size=batch_size, device=device)
         model.learn(total_timesteps)
 
-        # Predict optimal action using trained model
-        obs = env.reset()
-        action, _ = model.predict(obs, deterministic=True)
+        # Grab the underlying env to pull logs and best action
+        base_env: ReinforcedMROEnv = env.envs[0]
 
-        # Ensure ttt is an integer
-        hyst, ttt = action[0]
-        ttt = int(round(ttt))
+        # Fill self.score
+        self.score = pd.DataFrame(base_env.attempts, columns=["hyst", "ttt", "reward"])
+
+        best_hyst = float(base_env.best_hyst)
+        best_ttt = int(base_env.best_ttt)
+
         if verbose > 0:
-            print(f"\nOptimized Hyst: {hyst},\nOptimized TTT: {ttt}")
-        return hyst, ttt
+            self.logger.info(
+                f"\nOptimized Hyst (best seen): {best_hyst}, "
+                f"Optimized TTT (best seen): {best_ttt}, "
+                f"Total attempts logged: {len(self.score)}"
+            )
+
+        return best_hyst, best_ttt, self.score.copy()
 
 
 class ReinforcedMROEnv(Env):
@@ -92,7 +121,7 @@ class ReinforcedMROEnv(Env):
         )
         self.observation_space = Box(
             low=np.array([0, 0, 0, self.hyst_range[0], self.ttt_range[0]]),
-            high=np.array([1, np.inf, np.inf, self.hyst_range[1], self.ttt_range[1]]),
+            high=np.array([1, 1e6, 1e6, self.hyst_range[1], self.ttt_range[1]]),
             dtype=np.float64,
         )
 
@@ -102,41 +131,63 @@ class ReinforcedMROEnv(Env):
         self.episode_num = 1
         self.episode_reward = 0.0
 
+        # Attempt logging
+        self.attempts = []  # rows: [hyst, ttt, reward]
+
+        # Track best observed action
+        self.best_reward = -np.inf
+        self.best_hyst = 0.0
+        self.best_ttt = 2
+
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        self.logger = logging.getLogger(__name__)
+
     def step(self, action):
         hyst, ttt = action
-        ttt = int(round(ttt))
+        ttt = int(round(float(ttt)))
+        hyst = float(hyst)
 
         attached_df = perform_attachment_hyst_ttt(self.df, hyst, ttt, self.rlf_threshold)
-        mro_metric, ns, nf = calculate_mro_metric(attached_df)
+        mro_metric, _, _ = calculate_mro_metric(attached_df)
 
-        reward = mro_metric
+        reward = float(mro_metric)
         self.episode_reward += reward
-        self.state = np.array([reward, ns, nf, hyst, ttt])
+        self.state = np.array([reward, 0.0, 0.0, hyst, float(ttt)], dtype=np.float64)
         self.current_step += 1
 
+        # Log attempt
+        self.attempts.append([hyst, ttt, reward])
+
+        # Track best
+        if reward > self.best_reward:
+            self.best_reward = reward
+            self.best_hyst = hyst
+            self.best_ttt = ttt
+
         terminated = self.current_step >= self.max_steps
-        truncated = False  # Can be customized if needed
+        truncated = False
 
         if self.verbose > 0:
-            print(
-                f"Episode: {self.episode_num}, Timestep: {self.current_step}, "
-                f"Hyst: {hyst:.6f}, TTT: {ttt}, Reward: {reward:.6f}, Done: {terminated}"
+            self.logger.info(
+                f"Step {self.current_step} | Hyst: {hyst:.4f}, TTT: {ttt}, Reward: {reward:.6f}, Done: {terminated}"
             )
 
         if terminated:
             if self.verbose > 0:
                 avg_reward = self.episode_reward / self.max_steps
-                print(f"Episode {self.episode_num} average reward: {avg_reward:.6f}\n")
+                self.logger.info(f"Episode {self.episode_num} average reward: {avg_reward:.6f}\n")
             self.episode_num += 1
             self.episode_reward = 0.0
 
         return self.state, reward, terminated, truncated, {}
 
     def reset(self, *, seed=None, options=None):
-        self.state = np.array([0.0, 0.0, 0.0, 0.0, 2])
+        self.state = np.array([0.0, 0.0, 0.0, 0.0, 2], dtype=np.float64)
         self.current_step = 0
         return self.state, {}
 
     def render(self):
         if self.verbose > 0:
-            print(f"Current State: {self.state}, Current Step: {self.current_step}")
+            self.logger.info(f"Current State: {self.state}, Current Step: {self.current_step}")
