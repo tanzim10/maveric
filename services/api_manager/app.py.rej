@@ -1,0 +1,8 @@
+@@ -20,6 +20,7 @@
+ from api_manager.handlers.train_handler import TrainHandler
+ from api_manager.utils.file_io import bootstrap_radp_filesystem, save_input_file
+ from api_manager.validators.file_validator import UploadedFileValidator
++from api_manager.app_endpoints import AppEndpoints
+ 
+ from radp.common import constants
+ from radp.common.enums import InputFileType

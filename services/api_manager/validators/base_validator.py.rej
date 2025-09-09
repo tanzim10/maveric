@@ -1,0 +1,14 @@
+@@ -37,7 +37,12 @@
+                 errors.extend(e.validation_errors if e.validation_errors else [{"field": field_name, "error": e.message}])
+         
+         if errors:
+-            raise ValidationException("Validation failed", validation_errors=errors)
++            # If there's only one error, use its message directly for better error reporting
++            if len(errors) == 1:
++                error = errors[0]
++                raise ValidationException(error["error"], field=error.get("field"), validation_errors=errors)
++            else:
++                raise ValidationException("Multiple validation errors occurred", validation_errors=errors)
+     
+     def _validate_field(self, data: Dict[str, Any], field_name: str, field_config: Dict[str, Any]) -> None:
+         """Validate a single field"""

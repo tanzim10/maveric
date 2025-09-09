@@ -18,7 +18,6 @@ from api_manager.handlers.describe_simulation_handler import DescribeSimulationH
 from api_manager.handlers.simulation_handler import SimulationHandler
 from api_manager.handlers.train_handler import TrainHandler
 from api_manager.utils.file_io import bootstrap_radp_filesystem, save_input_file
-from api_manager.app_endpoints import AppEndpoints
 
 from radp.common import constants
 from radp.common.enums import InputFileType
@@ -141,29 +140,3 @@ def consume_simulation_output(simulation_id: str):
         )
     )
     return send_file(output_zip_file_path)
-
-
-# App-specific validation endpoints
-@app.route("/api/apps/validate", methods=["POST"])
-def validate_app_config():
-    """Validate app-specific configuration parameters"""
-    return AppEndpoints.validate_app_config()
-
-
-@app.route("/api/apps/validate-full", methods=["POST"]) 
-def validate_full_app_config():
-    """Validate complete app configuration including files"""
-    return AppEndpoints.validate_full_app_config()
-
-
-@app.route("/api/apps/schema/<app_type>", methods=["GET"])
-def get_app_schema(app_type: str):
-    """Get validation schema for specific app type"""
-    request.view_args = {"app_type": app_type}
-    return AppEndpoints.get_app_schema()
-
-
-@app.route("/api/apps/supported", methods=["GET"])
-def list_supported_apps():
-    """List all supported app types and their descriptions"""
-    return AppEndpoints.list_supported_apps()
