@@ -141,9 +141,9 @@ class CCOMainApp:
         # Load data
         topology = pd.read_csv(self.topology_path)
 
-        # Process UE data using the preprocessor
-        preprocessor = UEDataPreprocessor()
-        prediction_data = preprocessor.load_and_process_ue_data(self.prediction_data_path)
+        # Load UE data directly without renaming columns (RADP expects lon/lat)
+        prediction_data = pd.read_csv(self.prediction_data_path)
+        logger.info(f"Loaded UE data from {self.prediction_data_path}: {len(prediction_data)} records")
 
         config = pd.read_csv(self.config_path)
 
