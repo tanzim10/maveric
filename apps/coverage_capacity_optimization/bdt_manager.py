@@ -45,13 +45,14 @@ class BDTManager:
             logger.info(f"Loading training data from {self.training_data_path}")
             training_data_df = pd.read_csv(self.training_data_path)
 
-            radp_client.train(
+            train_response = radp_client.train(
                 model_id=model_id,
                 params={},
                 ue_training_data=training_data_df,
                 topology=topology_df,
                 model_update=False,
             )
+            logger.info(f"Training response: {train_response}")
             logger.info(f"Training request sent for model_id: {model_id}. Waiting for completion...")
             status: ModelStatus = radp_helper.resolve_model_status(
                 model_id, wait_interval=30, max_attempts=120, verbose=True
