@@ -71,11 +71,11 @@ class CCOEnvironment:
         self.radp_client = RADPClient()
         self.radp_helper = RADPHelper(self.radp_client)
 
-        # Set up simulation event
+        # Set up simulation event (matches dgpco_cco.py)
         self.simulation_event: Dict[str, Any] = {
             "simulation_time_interval_seconds": 1,
             "ue_tracks": {"ue_data_id": "ue_data_1"},
-            "rf_prediction": {"model_id": bayesian_digital_twin_id, "config_id": 0},
+            "rf_prediction": {"model_id": bayesian_digital_twin_id, "config_id": 1},
         }
 
         logger.info(f"CCO Environment initialized with {self.num_cells} cells")
@@ -118,13 +118,21 @@ class CCOEnvironment:
         )
 
         if not simulation_status.success:
-            raise Exception(f"Simulation '{simulation_id}' failed: {simulation_status.error_message}")
+            raise Exception(f"Exception occurred while running simulation '{simulation_id}': {simulation_status.error_message}")
 
         # Get simulation results
         rf_dataframe = self.radp_client.consume_simulation_output(simulation_id)
 
+        # Debug print (matches dgpco_cco.py)
+        logger.debug(f"RF DataFrame shape: {rf_dataframe.shape}")
+        logger.debug(f"RF DataFrame columns: {rf_dataframe.columns.tolist()}")
+
         # Perform cell attachment
         cell_selected_rf_dataframe = perform_attachment(rf_dataframe, self.topology)
+
+        # Debug print (matches dgpco_cco.py)
+        logger.debug(f"Cell Selected RF DataFrame shape: {cell_selected_rf_dataframe.shape}")
+        logger.debug(f"Cell Selected RF DataFrame columns: {cell_selected_rf_dataframe.columns.tolist()}")
 
         # Calculate CCO coverage dataframe
         coverage_dataframe = CcoEngine.rf_to_coverage_dataframe(
@@ -204,3 +212,54 @@ class CCOEnvironment:
             "topology": self.topology.copy(),
             "bayesian_digital_twin_id": self.bayesian_digital_twin_id,
         }
+
+    def get_cell_config_by_index(self, cell_idx: int, param_name: str) -> float:
+        """
+        Get the current configuration value for a specific cell by index.
+
+        Args:
+            cell_idx: Index of the cell
+            param_name: Name of the parameter (e.g., 'cell_el_deg')
+
+        Returns:
+            Current value of the parameter
+        """
+        return self.config.iloc[cell_idx][param_name]
+
+    def update_cell_config_by_index(self, cell_idx: int, param_name: str, param_value: float) -> None:
+        """
+        Update a configuration parameter for a specific cell by index.
+
+        Args:
+            cell_idx: Index of the cell to update
+            param_name: Name of the parameter (e.g., 'cell_el_deg')
+            param_value: New value for the parameter
+        """
+        self.config.iloc[cell_idx, self.config.columns.get_loc(param_name)] = param_value
+        logger.debug(f"Updated {param_name} for cell index {cell_idx} to {param_value}")
+
+    def get_all_cell_configs(self, param_name: str) -> List[float]:
+        """
+        Get all cell configuration values for a specific parameter.
+
+        Args:
+            param_name: Name of the parameter (e.g., 'cell_el_deg')
+
+        Returns:
+            List of configuration values for all cells
+        """
+        return self.config[param_name].tolist()
+
+    def set_all_cell_configs(self, param_name: str, values: List[float]) -> None:
+        """
+        Set all cell configuration values for a specific parameter.
+
+        Args:
+            param_name: Name of the parameter (e.g., 'cell_el_deg')
+            values: List of values to set for all cells
+        """
+        if len(values) != self.num_cells:
+            raise ValueError(f"Expected {self.num_cells} values, got {len(values)}")
+        
+        self.config[param_name] = values
+        logger.debug(f"Updated {param_name} for all cells")

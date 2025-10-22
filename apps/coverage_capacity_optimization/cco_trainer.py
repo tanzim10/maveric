@@ -10,7 +10,7 @@ This module implements training logic for CCO optimization using the dGPCO algor
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -88,19 +88,34 @@ class CCOTrainer:
         )
         epoch_rewards.append(initial_reward)
         
-        logger.info(f"Initial CCO metric = {initial_reward:.3f}")
+        logger.info(f"Before dGPCO starts, CCO metric = {initial_reward:.3f}")
         
-        # Run dGPCO training
+        # Save original configuration for reference
+        original_config = self.environment.config.copy()
+        continuously_unchanged = 0
+        
+        # Run dGPCO training with round-robin cell selection
         for epoch in range(1, num_epochs + 1):
             self.current_epoch = epoch
             
-            # Run one epoch of dGPCO
-            epoch_reward = self._run_dgpco_epoch(
+            # Round-robin cell selection (matches dgpco_cco.py)
+            cell_idx = (epoch - 1) % self.environment.num_cells
+            
+            # Run one epoch of dGPCO for the selected cell
+            epoch_reward, changed = self._run_dgpco_epoch(
+                cell_idx=cell_idx,
+                original_config=original_config,
                 lambda_=lambda_,
                 weak_coverage_threshold=weak_coverage_threshold,
                 over_coverage_threshold=over_coverage_threshold,
             )
             epoch_rewards.append(epoch_reward)
+            
+            # Track convergence
+            if changed:
+                continuously_unchanged = 0
+            else:
+                continuously_unchanged += 1
             
             # Update best configuration
             if epoch_reward > self.best_reward:
@@ -111,8 +126,18 @@ class CCOTrainer:
             self.training_history.append({
                 'epoch': epoch,
                 'reward': epoch_reward,
-                'config': self.environment.config.copy()
+                'config': self.environment.config.copy(),
+                'cell_idx': cell_idx,
+                'changed': changed
             })
+            
+            # Check for convergence (matches dgpco_cco.py logic)
+            if continuously_unchanged == self.environment.num_cells:
+                logger.info(
+                    "\nNo change for any cell after 1 full round robin (optimization converged)...."
+                    f"\nExiting early at epoch {epoch}..."
+                )
+                break
             
             if epoch % 10 == 0:
                 logger.info(f"Epoch {epoch}: CCO metric = {epoch_reward:.3f}")
@@ -127,112 +152,137 @@ class CCOTrainer:
             'average_reward': np.mean(epoch_rewards),
             'training_history': self.training_history,
             'best_config': self.best_config,
-            'epoch_rewards': epoch_rewards
+            'epoch_rewards': epoch_rewards,
+            'converged_early': continuously_unchanged == self.environment.num_cells
         }
         
         logger.info(f"Training completed. Best reward: {self.best_reward:.3f}")
         return results
     
-    def _run_dgpco_epoch(self, lambda_: float, weak_coverage_threshold: float,
-                        over_coverage_threshold: float) -> float:
+    def _run_dgpco_epoch(self, cell_idx: int, original_config: pd.DataFrame, 
+                        lambda_: float, weak_coverage_threshold: float,
+                        over_coverage_threshold: float) -> Tuple[float, bool]:
         """
-        Run one epoch of dGPCO algorithm.
+        Run one epoch of dGPCO algorithm for a single cell (matches dgpco_cco.py).
         
         Args:
+            cell_idx: Index of the cell to optimize
+            original_config: Original configuration for reference
             lambda_: Weight parameter
             weak_coverage_threshold: Weak coverage threshold
             over_coverage_threshold: Over coverage threshold
             
         Returns:
-            Epoch reward
+            Tuple of (epoch_reward, changed_flag)
         """
-        num_cells = self.environment.num_cells
-        epoch_rewards = []
+        # Get current cell information
+        cell_id = self.environment.config.iloc[cell_idx][CELL_ID]
+        current_tilt = self.environment.get_cell_config_by_index(cell_idx, CELL_EL_DEG)
+        original_tilt = original_config.iloc[cell_idx][CELL_EL_DEG]
         
-        for cell_idx in range(num_cells):
-            # Get current cell configuration
-            cell_id = self.environment.config.iloc[cell_idx][CELL_ID]
-            current_tilt = self.environment.config.iloc[cell_idx][CELL_EL_DEG]
+        logger.info(f"\nIn epoch: {self.current_epoch:02}/{self.num_epochs}...")
+        
+        # Calculate current metric
+        _, _, current_reward = self.environment.calc_metric(
+            lambda_=lambda_,
+            weak_coverage_threshold=weak_coverage_threshold,
+            over_coverage_threshold=over_coverage_threshold,
+        )
+        
+        # Define tilt adjustments (matches dgpco_cco.py)
+        opt_delta = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+        rewards = []
+        tilts_tried = []
+        
+        # Get valid tilt values
+        valid_tilts = self.environment.get_valid_tilt_values()
+        if not valid_tilts:
+            logger.warning("No valid tilt values available")
+            return current_reward, False
+        
+        # Find current tilt index in valid values
+        try:
+            current_tilt_idx = valid_tilts.index(current_tilt)
+        except ValueError:
+            logger.warning(f"Current tilt {current_tilt} not in valid values")
+            return current_reward, False
+        
+        # Try different tilt adjustments
+        for delta in opt_delta:
+            new_tilt_idx = current_tilt_idx + delta
             
-            # Calculate current metric
-            _, _, current_reward = self.environment.calc_metric(
+            # Check bounds
+            if new_tilt_idx < 0 or new_tilt_idx >= len(valid_tilts):
+                continue
+            
+            new_tilt = valid_tilts[new_tilt_idx]
+            
+            # Skip if same as current tilt
+            if new_tilt == current_tilt:
+                continue
+            
+            # Temporarily update configuration
+            original_tilt_value = self.environment.get_cell_config_by_index(cell_idx, CELL_EL_DEG)
+            self.environment.update_cell_config_by_index(cell_idx, CELL_EL_DEG, new_tilt)
+            
+            # Calculate reward for new tilt
+            _, _, reward = self.environment.calc_metric(
                 lambda_=lambda_,
                 weak_coverage_threshold=weak_coverage_threshold,
                 over_coverage_threshold=over_coverage_threshold,
             )
             
-            # Try different tilt adjustments
-            tilt_adjustments = [-4, -3, -2, -1, 1, 2, 3, 4]
-            rewards = []
-            tilts_tried = []
+            rewards.append(reward)
+            tilts_tried.append(new_tilt)
             
-            for adjustment in tilt_adjustments:
-                new_tilt = self._get_adjusted_tilt(current_tilt, adjustment)
-                if new_tilt != current_tilt:
-                    # Temporarily update configuration
-                    original_tilt = self.environment.config.iloc[cell_idx][CELL_EL_DEG]
-                    self.environment.config.iloc[cell_idx][CELL_EL_DEG] = new_tilt
-                    
-                    # Calculate reward
-                    _, _, reward = self.environment.calc_metric(
-                        lambda_=lambda_,
-                        weak_coverage_threshold=weak_coverage_threshold,
-                        over_coverage_threshold=over_coverage_threshold,
-                    )
-                    rewards.append(reward)
-                    tilts_tried.append(new_tilt)
-                    
-                    # Restore original tilt
-                    self.environment.config.iloc[cell_idx][CELL_EL_DEG] = original_tilt
-            
-            # Choose best tilt (with epsilon-greedy exploration)
-            if rewards and np.random.random() > self.epsilon:
-                best_idx = np.argmax(rewards)
-                best_tilt = tilts_tried[best_idx]
-                best_reward = rewards[best_idx]
-            else:
-                # Random exploration
-                if rewards:
-                    best_idx = np.random.randint(len(rewards))
-                    best_tilt = tilts_tried[best_idx]
-                    best_reward = rewards[best_idx]
-                else:
-                    best_tilt = current_tilt
-                    best_reward = current_reward
-            
-            # Apply best tilt
-            self.environment.config.iloc[cell_idx][CELL_EL_DEG] = best_tilt
-            epoch_rewards.append(best_reward)
-            
-            logger.debug(f"Cell {cell_id}: {current_tilt} -> {best_tilt}, reward: {best_reward:.3f}")
+            # Restore original tilt
+            self.environment.update_cell_config_by_index(cell_idx, CELL_EL_DEG, original_tilt_value)
         
-        return np.mean(epoch_rewards) if epoch_rewards else 0
+        # Choose best tilt using epsilon-greedy (FIXED LOGIC)
+        if tilts_tried:
+            if np.random.uniform() < self.epsilon:
+                # Random exploration (matches dgpco_cco.py)
+                best_idx = np.random.randint(0, len(tilts_tried))
+            else:
+                # Pick best (matches dgpco_cco.py)
+                best_idx = int(np.argmax(rewards))
+            
+            best_tilt = tilts_tried[best_idx]
+            best_reward = rewards[best_idx]
+            
+            # If current is better than best tried, keep current
+            if current_reward >= best_reward:
+                best_tilt = current_tilt
+                best_reward = current_reward
+                changed = False
+            else:
+                changed = True
+            
+            # Apply the best tilt
+            self.environment.update_cell_config_by_index(cell_idx, CELL_EL_DEG, best_tilt)
+            
+            # Log the decision (matches dgpco_cco.py format)
+            logger.info(
+                f"...cell_id={cell_id}, orig_el_deg={original_tilt}, cur_el_deg={current_tilt}, "
+                f"elevs_tried={tilts_tried}, best_el_tried={tilts_tried[best_idx]}, best_el={best_tilt}"
+            )
+            
+            if changed:
+                logger.info(
+                    f"...changing elevation tilt for cell {cell_id} "
+                    f"from {current_tilt} to {best_tilt}, to achieve new "
+                    f"CCO metric = {best_reward:.3f}"
+                )
+            else:
+                logger.info(f"...keeping same tilt for cell {cell_id} at {current_tilt}")
+        else:
+            # No valid tilts to try
+            best_reward = current_reward
+            changed = False
+            logger.info(f"...no valid tilt adjustments for cell {cell_id}")
+        
+        return best_reward, changed
     
-    def _get_adjusted_tilt(self, current_tilt: float, adjustment: int) -> float:
-        """
-        Get adjusted tilt value.
-        
-        Args:
-            current_tilt: Current tilt value
-            adjustment: Adjustment amount
-            
-        Returns:
-            Adjusted tilt value
-        """
-        tilt_values = self.environment.get_valid_tilt_values()
-        if not tilt_values:
-            return current_tilt
-        
-        try:
-            current_idx = tilt_values.index(current_tilt)
-            new_idx = current_idx + adjustment
-            
-            if 0 <= new_idx < len(tilt_values):
-                return tilt_values[new_idx]
-            else:
-                return current_tilt
-        except ValueError:
-            return current_tilt
     
     def save_model(self, filepath: str) -> None:
         """
