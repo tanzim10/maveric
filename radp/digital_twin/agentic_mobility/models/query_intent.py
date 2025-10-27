@@ -1,0 +1,35 @@
+"""Query intent data models."""
+from enum import Enum
+from typing import Dict, Optional
+
+from pydantic import BaseModel, Field
+
+
+class ScenarioType(str, Enum):
+    """Scenario types for mobility generation."""
+
+    URBAN = "urban"
+    SUBURBAN = "suburban"
+    RURAL = "rural"
+    HIGHWAY = "highway"
+    MIXED = "mixed"
+
+
+class MobilityClass(str, Enum):
+    """Types of mobile entities."""
+
+    STATIONARY = "stationary"
+    PEDESTRIAN = "pedestrian"
+    CYCLIST = "cyclist"
+    CAR = "car"
+
+
+class QueryIntent(BaseModel):
+    """Structured representation of user's mobility intent."""
+
+    scenario_type: ScenarioType
+    location: str
+    num_ues: int = Field(gt=0, le=10000)
+    num_ticks: int = Field(default=50, gt=0)
+    ue_distribution: Optional[Dict[MobilityClass, float]] = None
+    raw_query: str  # IMPORTANT: Used by Parameter Agent for distribution inference
