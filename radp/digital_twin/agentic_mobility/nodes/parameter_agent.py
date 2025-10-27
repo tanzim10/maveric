@@ -13,7 +13,7 @@ def node(state: MobilityGenerationState) -> Dict:
         state: Current graph state
 
     Returns:
-        Dict with only gen_params key updated
+        Dict with gen_params and updated query_intent
     """
     query_intent_dict = state["query_intent"]
 
@@ -25,8 +25,8 @@ def node(state: MobilityGenerationState) -> Dict:
 
     parameter_chain = ParameterChain()
 
-    # Generate parameters
-    gen_params = parameter_chain.generate(query_intent)
+    # Generate parameters and get updated query_intent with distribution source
+    gen_params, updated_query_intent = parameter_chain.generate(query_intent)
 
-    # Return only the keys we're updating
-    return {"gen_params": gen_params.dict()}
+    # Return updated gen_params AND updated query_intent (with distribution source)
+    return {"gen_params": gen_params.dict(), "query_intent": updated_query_intent.dict()}

@@ -17,8 +17,9 @@ Valid UE classes:
 - car: Vehicles (5-30 m/s)
 
 If the user specifies distribution:
-- Explicit: "60% pedestrians, 30% cars, 10% cyclists" → extract exact percentages
-- Implicit: "mimicking a residential area" → leave ue_distribution as null (will be inferred later)
+- Explicit: "60% pedestrians, 30% cars, 10% cyclists" → extract exact percentages with source="parsed"
+  Format: {"distribution": {"pedestrian": 0.6, "car": 0.3, "cyclist": 0.1}, "source": "parsed"}
+- Implicit: "mimicking a residential area" → leave ue_distribution as null (will be inferred later with source="predicted")
 - Not specified → leave ue_distribution as null
 
 Scenario type inference:
@@ -48,7 +49,7 @@ FEW_SHOT_EXAMPLES = [
             "location": "Chicago",
             "num_ues": 50,
             "num_ticks": 100,
-            "ue_distribution": {"pedestrian": 0.6, "car": 0.3, "cyclist": 0.1},
+            "ue_distribution": {"distribution": {"pedestrian": 0.6, "car": 0.3, "cyclist": 0.1}, "source": "parsed"},
             "raw_query": "Create 50 UEs in suburban Chicago with 60% pedestrians, 30% cars, 10% cyclists for 100 time steps",
         },
     },

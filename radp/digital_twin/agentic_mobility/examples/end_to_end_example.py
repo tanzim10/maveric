@@ -16,7 +16,7 @@ def main():
     print("\nExample 1: Urban scenario")
     print("-" * 80)
 
-    query1 = "Give me for Dhaka. consider it as an suburban area with lots of pedestrians and cars. there are so many motorbikes, can consider them as cyclists. have two hundereds total devices"
+    query1 = "Give me for Dhaka. consider it as an suburban area with lots of cars. have two hundereds total devices. make the it for 30 ticks"
     print(f"Query: '{query1}'")
     print("\nProcessing...")
 
@@ -41,6 +41,10 @@ def main():
 
     print("\n  Metadata:")
     print(json.dumps(metadata1, indent=2))
+
+    df1.to_csv(
+        f"agentic_mobility_{metadata1['query_intent']['num_ues']}UE_{metadata1['query_intent']['num_ticks']}ticks.csv"
+    )
 
     # # Example 2: Highway scenario
     # print("\n\n2. Highway Scenario: I-95 Boston")

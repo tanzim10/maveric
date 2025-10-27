@@ -95,11 +95,7 @@ apps/energy_savings/energy_saver_agent.zip
 apps/load_balancing/cco_rl_agent_multiday.zip
 
 # agent dev
-CODEBASE_STRUCTURE.md
-IMPLEMENTATION_COMPLETE.md
-implementation_plan.md
-IMPLEMENTATION_PROGRESS.md
-poc_plan.md
+agentic_mobility_docs
 
 # pre-commit hook
 .flake8

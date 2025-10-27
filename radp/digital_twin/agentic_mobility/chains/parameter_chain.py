@@ -1,6 +1,13 @@
 """LLM chain for parameter generation."""
+from typing import Tuple
+
 from radp.digital_twin.agentic_mobility.models.generation_params import GenParams
-from radp.digital_twin.agentic_mobility.models.query_intent import QueryIntent
+from radp.digital_twin.agentic_mobility.models.query_intent import (
+    DistributionSource,
+    MobilityClass,
+    QueryIntent,
+    UEDistribution,
+)
 from radp.digital_twin.agentic_mobility.prompts.parameter_prompts import PARAMETER_SYSTEM_PROMPT, get_parameter_prompt
 from radp.digital_twin.agentic_mobility.utils.llm_client import LLMClient
 
@@ -15,22 +22,22 @@ class ParameterChain:
         """Initialize parameter chain."""
         self.llm_client = LLMClient()
 
-    def generate(self, query_intent: QueryIntent) -> GenParams:
+    def generate(self, query_intent: QueryIntent) -> Tuple[GenParams, QueryIntent]:
         """Generate mobility parameters from QueryIntent.
 
         Args:
             query_intent: Parsed query intent
 
         Returns:
-            GenParams object with generated parameters
+            Tuple of (GenParams, updated QueryIntent with distribution source)
 
         Raises:
             Exception: If generation fails after retries
         """
-        # Convert ue_distribution from MobilityClass keys to string keys if provided
+        # Convert ue_distribution from UEDistribution to dict if provided
         ue_dist_dict = None
         if query_intent.ue_distribution:
-            ue_dist_dict = {k.value: v for k, v in query_intent.ue_distribution.items()}
+            ue_dist_dict = {k.value: v for k, v in query_intent.ue_distribution.distribution.items()}
 
         prompt = get_parameter_prompt(
             scenario_type=query_intent.scenario_type.value,
@@ -44,4 +51,17 @@ class ParameterChain:
             prompt=prompt, output_model=GenParams, system_message=PARAMETER_SYSTEM_PROMPT
         )
 
-        return gen_params
+        # Update QueryIntent with predicted distribution if it was None
+        updated_query_intent = query_intent
+        if query_intent.ue_distribution is None:
+            # LLM generated the distribution - mark as "predicted"
+            predicted_distribution = {MobilityClass(k): v for k, v in gen_params.ue_class_distribution.items()}
+            updated_query_intent = query_intent.copy(
+                update={
+                    "ue_distribution": UEDistribution(
+                        distribution=predicted_distribution, source=DistributionSource.PREDICTED
+                    )
+                }
+            )
+
+        return gen_params, updated_query_intent
