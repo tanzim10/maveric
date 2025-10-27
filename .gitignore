@@ -100,7 +100,6 @@ IMPLEMENTATION_COMPLETE.md
 implementation_plan.md
 IMPLEMENTATION_PROGRESS.md
 poc_plan.md
-examples/
 
 # pre-commit hook
 .flake8

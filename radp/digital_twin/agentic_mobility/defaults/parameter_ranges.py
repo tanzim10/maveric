@@ -22,4 +22,4 @@ AREA_CONSTRAINTS = {
 }
 
 # Simulation constraints
-SIMULATION_CONSTRAINTS = {"max_ues": 10000, "min_ues": 1, "max_ticks": 1000, "min_ticks": 1}
+SIMULATION_CONSTRAINTS = {"max_ues": 10000, "min_ues": 30, "max_ticks": 1000, "min_ticks": 50}

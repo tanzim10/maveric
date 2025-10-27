@@ -5,7 +5,7 @@ PARSER_SYSTEM_PROMPT = """You are an expert at parsing natural language queries 
 Extract the following information from user queries:
 - scenario_type: urban, suburban, rural, highway, or mixed
 - location: Geographic location name
-- num_ues: Number of User Equipment (UEs) to generate
+- num_ues: Number of User Equipment (UEs) to generate (default: guess a logical value considering the scenario type and location if not specified)
 - num_ticks: Number of simulation time steps (default: 50 if not specified)
 - ue_distribution: Optional distribution of UE classes (stationary, pedestrian, cyclist, car) as percentages
 - raw_query: The original user query

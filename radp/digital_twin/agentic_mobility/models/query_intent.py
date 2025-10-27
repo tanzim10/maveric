@@ -29,7 +29,7 @@ class QueryIntent(BaseModel):
 
     scenario_type: ScenarioType
     location: str
-    num_ues: int = Field(gt=0, le=10000)
+    num_ues: int = Field(default=30, gt=0, le=10000)  # Default 30 UEs if not specified
     num_ticks: int = Field(default=50, gt=0)
     ue_distribution: Optional[Dict[MobilityClass, float]] = None
     raw_query: str  # IMPORTANT: Used by Parameter Agent for distribution inference

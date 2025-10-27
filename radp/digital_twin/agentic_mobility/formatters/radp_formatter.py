@@ -26,16 +26,30 @@ class RADPFormatter:
         num_ticks = query_intent["num_ticks"]
 
         # Calculate counts per class based on distribution
+        # Use rounding to nearest integer, then adjust for any discrepancy
         ue_class_counts = {}
+        fractional_parts = {}
+
         for ue_class, percentage in ue_class_dist.items():
-            ue_class_counts[ue_class] = int(num_ues * percentage)
+            exact_count = num_ues * percentage
+            ue_class_counts[ue_class] = int(exact_count)
+            fractional_parts[ue_class] = exact_count - int(exact_count)
 
         # Ensure total equals num_ues (handle rounding)
         total_allocated = sum(ue_class_counts.values())
-        if total_allocated < num_ues:
-            # Add remaining to the class with highest percentage
-            max_class = max(ue_class_dist, key=ue_class_dist.get)
-            ue_class_counts[max_class] += num_ues - total_allocated
+        remaining = num_ues - total_allocated
+
+        if remaining > 0:
+            # Distribute remaining UEs to classes with highest fractional parts
+            sorted_classes = sorted(fractional_parts.items(), key=lambda x: x[1], reverse=True)
+            for i in range(remaining):
+                ue_class_counts[sorted_classes[i][0]] += 1
+        elif remaining < 0:
+            # Remove excess UEs from classes with lowest fractional parts
+            sorted_classes = sorted(fractional_parts.items(), key=lambda x: x[1])
+            for i in range(abs(remaining)):
+                if ue_class_counts[sorted_classes[i][0]] > 0:
+                    ue_class_counts[sorted_classes[i][0]] -= 1
 
         # Build UE class distribution in RADP format
         radp_ue_class_dist = {}
@@ -56,16 +70,22 @@ class RADPFormatter:
         }
 
         # Build Gauss-Markov parameters
-        gauss_markov_params = {"alpha": alpha, "variance": variance}
+        gauss_markov_params = {
+            "alpha": alpha,
+            "variance": variance,
+            "rng_seed": 42,  # Default random seed for reproducibility
+            "lon_x_dims": 100,  # Default grid x-dimension (meters)
+            "lon_y_dims": 100,  # Default grid y-dimension (meters)
+        }
 
         # Construct full RADP format
         radp_params = {
             "ue_tracks_generation": {
                 "params": {
                     "simulation_duration": 3600,  # Default 1 hour
-                    "simulation_time_interval": 0.01,  # Default 10ms
+                    "simulation_time_interval_seconds": 0.01,  # Default 10ms (note: key has _seconds suffix)
                     "num_ticks": num_ticks,
-                    "num_batches": 10,  # Default
+                    "num_batches": 1,  # Default
                     "ue_class_distribution": radp_ue_class_dist,
                     "lat_lon_boundaries": lat_lon_boundaries,
                     "gauss_markov_params": gauss_markov_params,
