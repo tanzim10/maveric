@@ -1,7 +1,9 @@
 """Geocoding utilities using geopy/Nominatim."""
 import math
+import ssl
 from typing import Optional
 
+import certifi
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import Nominatim
 
@@ -18,7 +20,9 @@ class GeocodingService:
         Args:
             user_agent: User agent string for Nominatim
         """
-        self.geolocator = Nominatim(user_agent=user_agent, timeout=10)
+        # Create SSL context with certifi's CA bundle
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        self.geolocator = Nominatim(user_agent=user_agent, timeout=10, ssl_context=ssl_context)
 
     def geocode_location(self, location: str, bounds_size_km: float = 5.0) -> Optional[LocationData]:
         """Geocode a location string to geographic bounds.

@@ -54,10 +54,10 @@ optimization:
 
 data:
   # Input CSV with UE data
-  input_csv: "notebooks/simulation_data_agentic.csv"
+  input_csv: "apps/mobility_robustness_optimization/agentic_mro/data/agentic_mobility_200UE_30ticks.csv"
 
   # Topology CSV with cell information
-  topology_csv: "apps/coverage_capacity_optimization/data/topology.csv"
+  topology_csv: "apps/mobility_robustness_optimization/agentic_mro/data/cell_topology.csv"
 
   # Output directory for results
   output_dir: "outputs/"

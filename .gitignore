@@ -81,10 +81,12 @@ apps/energy_savings/data
 apps/energy_savings/generated_data
 apps/load_balancing/data
 apps/load_balancing/generated_data
+apps/mobility_robustness_optimization/agentic_mro/data/
 
 # plots
 apps/energy_savings/plots
 apps/load_balancing/plots
+apps/mobility_robustness_optimization/agentic_mro/plots
 
 # logs
 apps/energy_savings/rl_training_logs
@@ -100,3 +102,6 @@ radp/digital_twin/agentic_mobility/examples/generated_ues
 
 # pre-commit hook
 .flake8
+
+# csv files
+*.csv

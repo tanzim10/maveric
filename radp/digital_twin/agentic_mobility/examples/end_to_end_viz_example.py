@@ -1,19 +1,21 @@
 """End-to-end example: Natural language → Mobility simulation + Visualization + Topology."""
 import json
-import matplotlib.pyplot as plt
+
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.cm as cm
-import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from radp.digital_twin.agentic_mobility.integration import AgenticMobilityIntegration
 from radp.digital_twin.agentic_mobility.topology_generator import TopologyGenerator
-from radp.digital_twin.mobility.param_regression import get_predicted_alpha, preprocess_ue_data
+
+matplotlib.use("Agg")
 
 # ----------------------------------------------------------------------
 # Visualization functions
 # ----------------------------------------------------------------------
+
+
 def plot_ue_tracks_with_topology(df: pd.DataFrame, topology_df: pd.DataFrame) -> None:
     """Plots the movement tracks of unique UE IDs with cell tower locations."""
     batch_indices = []
@@ -81,7 +83,7 @@ def plot_ue_tracks_with_topology(df: pd.DataFrame, topology_df: pd.DataFrame) ->
         plt.legend(loc="upper right")
         plt.tight_layout()
         plt.savefig("ue_tracks_with_topology.png", dpi=150)
-        print(f"Saved visualization to: ue_tracks_with_topology.png")
+        print("Saved visualization to: ue_tracks_with_topology.png")
         start_idx = end_idx
 
 
@@ -151,10 +153,10 @@ def main():
     # If you don't specify, LLM calculates optimal count based on area and UE density
 
     query1 = (
-        "Give me for Tokyo. consider it as a suburban area with lots of pedestrians and cars. "
+        "Give me for Mohakhali DOHS. consider it as a suburban area with lots of pedestrians and cars. "
         "There are so many motorbikes, consider them as cyclists. Have two hundreds total devices."
-        # Add tower count here if desired, e.g.: 
-        " Deploy 2 cell towers."
+        # Add tower count here if desired, e.g.:
+        " Deploy 5 cell towers."
     )
 
     print(f"Query: '{query1}'\nProcessing...")
@@ -185,7 +187,7 @@ def main():
 
     with open("generation_params.json", "w") as f:
         json.dump(params_info, f, indent=2)
-    print(f"💾 Saved generation parameters to: generation_params.json")
+    print("💾 Saved generation parameters to: generation_params.json")
 
     topology_df = TopologyGenerator.generate_from_llm(
         area_type=location_data.get("area_type", "suburban"),
@@ -200,9 +202,9 @@ def main():
     print(f"✓ Generated {len(topology_df)} cell sectors")
 
     # Count unique locations
-    unique_locations = topology_df.groupby(['cell_lat', 'cell_lon']).size()
+    unique_locations = topology_df.groupby(["cell_lat", "cell_lon"]).size()
     print(f"✓ Generated {len(unique_locations)} unique cell sites")
-    print(f"\nTopology preview:")
+    print("\nTopology preview:")
     print(topology_df.to_string())
 
     # Save topology to CSV
@@ -211,11 +213,27 @@ def main():
     print(f"\n💾 Saved topology to: {topology_csv_path}")
 
     # Print boundary info
-    print(f"\nBoundary Check:")
-    print(f"  Lat boundaries: {location_data.get('min_lat', df1['lat'].min()):.6f} to {location_data.get('max_lat', df1['lat'].max()):.6f}")
-    print(f"  Lon boundaries: {location_data.get('min_lon', df1['lon'].min()):.6f} to {location_data.get('max_lon', df1['lon'].max()):.6f}")
+    print("\nBoundary Check:")
+    print(
+        f"  Lat boundaries: {location_data.get('min_lat', df1['lat'].min()):.6f} to "
+        f"{location_data.get('max_lat', df1['lat'].max()):.6f}"
+    )
+    print(
+        f"  Lon boundaries: {location_data.get('min_lon', df1['lon'].min()):.6f} to "
+        f"{location_data.get('max_lon', df1['lon'].max()):.6f}"
+    )
     print(f"  Cell lat range: {topology_df['cell_lat'].min():.6f} to {topology_df['cell_lat'].max():.6f}")
     print(f"  Cell lon range: {topology_df['cell_lon'].min():.6f} to {topology_df['cell_lon'].max():.6f}")
+
+    from pathlib import Path
+
+    # Create output directory for generated UEs
+    output_dir = Path(__file__).parent / "generated_ues"
+    output_dir.mkdir(exist_ok=True)
+
+    csv_path = output_dir / "mobility_data.csv"
+    df1.to_csv(csv_path, index=False)
+    print(f"💾 Saved mobility data to: {csv_path}")
 
     # Visualize with topology
     print("\n📈 Visualizing UE mobility tracks with cell towers...")
