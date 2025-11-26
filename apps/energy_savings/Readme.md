@@ -1,7 +1,7 @@
 # Energy Saving Application using Reinforcement Learning
 
-**Version:** 1.0  
-**Date:** June 20, 2025
+**Version:** 1.2  
+**Date:** November 26, 2025
 
 ---
 
@@ -61,21 +61,22 @@ energy_saving_app/
 ├── rl_predictor.py             # Inference using the trained RL agent
 ├── energy_saving_visualizer.py # Generates comparison plots
 │
-├── topology.csv                # Cell tower layout
-├── config.csv                  # Initial cell tower configuration
-├── dummy_ue_training_data.csv  # Training data for BDT model
+├── data/                       # Static inputs required by the pipeline
+│   ├── topology.csv                # Cell tower layout
+│   ├── config.csv                  # Initial cell tower configuration
+│   └── dummy_ue_training_data.csv  # Training data for the BDT model
 │
-├── generated_data/
-│   └── Day_*/                  # Data for each day
-│       └── ue_data_per_tick/   # Raw UE location data per hour
-│           ├── generated_ue_data_for_cco_0.csv
+├── generated_data/             # Day-wise UE datasets (raw + processed)
+│   └── Day_*/
+│       ├── ue_data_per_tick/       # Raw UE location data per hour (input)
+│       │   ├── generated_ue_data_for_cco_0.csv
+│       │   └── ... (up to 23)
+│       └── ue_data_gym_ready/      # Preprocessed UE data for RL (output)
+│           ├── ue_data_gym_ready_0.csv
 │           └── ... (up to 23)
 │
 └── (Generated Outputs)/
-        ├── generated_data/
-        │   └── Day_*/
-        │       └── ue_data_gym_ready/  # Processed UE data
-        ├── bdt_model_map.pickle        # Trained BDT model
+        ├── bdt_model_map.pickle        # Trained BDT model artifact
         ├── energy_saver_agent.zip      # Trained RL agent
         ├── rl_training_logs/           # RL training logs and checkpoints
         └── plots/                      # Visualization outputs
@@ -85,41 +86,62 @@ energy_saving_app/
 
 ## 5. Prerequisites
 
-- **Python 3.8+**
-- **Docker:** BDT model training runs inside a Docker container. Ensure Docker daemon is running.
-- **Environment Configuration:** Create a `.env` file in the project root to configure the RADP service connection. When running in development mode, set:
+- Go to project root
 
   ```bash
-  RADP_SERVICE_IP=127.0.0.1
-  RADP_SERVICE_PORT=8081
+  cd path/to/maveric
   ```
 
-  You can copy the provided `.env-dev` file as a starting point:
+- **Python 3.9-3.10:** Create venv and activate:
+
+  Example: Ensure shell has `python3.10`
 
   ```bash
+  python3.10 -m venv .venv
+  source .venv/bin/activate
+  python --version  # should report Python 3.10.16
+  ```
+
+- Configure Python Path
+
+  ```bash
+  # from maveric root
+  export PYTHONPATH="$(pwd)":$PYTHONPATH
+  ```
+
+- **Docker:** BDT model training runs inside a Docker container. Ensure Docker daemon is running.
+
+  Note: Refer [maveric/README.md ### Booting up RADP](README.md#booting-up-radp) for host GPU utilization.
+
+  ```bash
+  # Set dev port first if using dev mode
   cp .env-dev .env
   ```
 
-  **Note:** The dev mode services run on port `8081`, while production uses `8080`. Ensure `RADP_SERVICE_PORT=8081` is set when using `dc-dev.yml`.
+  ```bash
+  # from maveric root
+  docker build -t radp radp
+  docker compose -f dc.yml -f dc-dev.yml up -d --build
+  ```
 
-- **Required Python Packages:** Create a `requirements.txt` file:
+- **Required Python Packages:**
 
-        ```text
-        pandas
-        numpy
-        gymnasium
-        stable-baselines3[extra]
-        matplotlib
-        torch
-        gpytorch
-        # any other specific libraries like radp_client
-        ```
+  ```bash
+  # from maveric root
+  pip install -r radp/client/requirements.txt
+  pip install -r apps/requirements.txt
+  ```
 
-        Install packages:
+- **Required Data to Train Upon:** Have these following data dir in the app dir, As described above [see Directory Structure](#directory-structure):
 
-        ```bash
-        pip install -r requirements.txt
-        ```
+  - `generated_data/`
+  - `data/`
+
+Note: If needed, these datasets can be generated with the utilities documented in [`radp/digital_twin/traffic_load/Readme.md`](radp/digital_twin/traffic_load/Readme.md)
+
+    - generate `./generated_data/`
+    - copy `generated_data/` to energy_savings rApp dir
+    - mkdir `./data/` inside energy_savings rApp dir and copy `topology.csv`, `config.csv` and `dummy_ue_training_data.csv` there
 
 ---
 
@@ -127,9 +149,11 @@ energy_saving_app/
 
 The application is run as a pipeline, with each step triggered by a specific flag to `main_app.py`.
 
+> cd apps/energy_savings
+
 ### **Step 1: Preprocess UE Data**
 
-Prepares raw, per-hour UE location data for simulation.
+Prepares raw, per-hour UE location data for simulation. Pass `--train-days` and `--test-day` as desired.
 
 ```bash
 python main_app.py --preprocess-data --train-days 0 1 2 3 --test-day 4
@@ -144,28 +168,14 @@ python main_app.py --preprocess-data --train-days 0 1 2 3 --test-day 4
 
 Trains the RF simulation model using a backend service in Docker.
 
-- **Prerequisites:** Docker container (e.g., `radp_dev-training-1`) must be running.
+- **Prerequisites:** Docker container (e.g., `radp_dev-training-1` for dev mode, `radp_prod-training-1` for prod) must be running.
 
 ```bash
 python main_app.py --train-bdt --bdt-model-id "bdt_energy_saving_v1" --container "radp_dev-training-1"
 ```
 
-- **Inputs:** `topology.csv`, `dummy_ue_training_data.csv`
+- **Inputs:** `data/topology.csv`, `data/dummy_ue_training_data.csv`
 - **Output:** `bdt_model_map.pickle`
-
-**Important Notes:**
-
-- The BDT model file (`bdt_model_map.pickle`) is **not included in the git repository** due to its large size.
-- You **must train the model** before proceeding with RL training.
-- The model is downloaded from the Docker container to your local `apps/energy_savings/` directory.
-- To verify successful download, check for the file:
-  ```bash
-  ls -lh bdt_model_map.pickle
-  ```
-- If the download fails, ensure:
-  - Docker is installed and running
-  - The container name is correct (check with `docker ps`)
-  - The backend training completed successfully
 
 ---
 
@@ -177,7 +187,7 @@ Trains the PPO agent using preprocessed data and the BDT model.
 python main_app.py --train-rl --train-days 0 1 2 3 --total-timesteps 25000
 ```
 
-- **Inputs:** `bdt_model_map.pickle`, `generated_data/Day_*/ue_data_gym_ready/`, `topology.csv`, `config.csv`
+- **Inputs:** `bdt_model_map.pickle`, `generated_data/Day_*/ue_data_gym_ready/`, `data/topology.csv`, `data/config.csv`
 - **Outputs:** `energy_saver_agent.zip`, `rl_training_logs/`
 
 ---
@@ -190,7 +200,7 @@ Uses the trained agent to predict the optimal network configuration for a specif
 python main_app.py --infer --tick <T>
 ```
 
-- **Inputs:** `energy_saver_agent.zip`, `topology.csv`
+- **Inputs:** `energy_saver_agent.zip`, `data/topology.csv`
 - **Output:** Console table of predicted optimal state (ON/OFF, tilt) for each cell.
 
 ---
@@ -203,7 +213,7 @@ Generates a side-by-side plot comparing network state before and after optimizat
 python main_app.py --visualize --test-day <D> --tick <T>
 ```
 
-- **Inputs:** `energy_saver_agent.zip`, `bdt_model_map.pickle`, `topology.csv`, `config.csv`, `generated_data/Day_<D>/ue_data_gym_ready/`
+- **Inputs:** `energy_saver_agent.zip`, `bdt_model_map.pickle`, `data/topology.csv`, `data/config.csv`, `generated_data/Day_<D>/ue_data_gym_ready/`
 - **Output:** `.png` image in `plots/` directory.
 
 ---
@@ -217,14 +227,14 @@ python main_app.py --preprocess-data --train-days 0 1 2 3 --test-day 4
 # 2. Train the core RF simulation model (ensure Docker container is running)
 python main_app.py --train-bdt --bdt-model-id "bdt_for_energy_saving" --container "radp_dev-training-1"
 
-# 3. Train the RL agent on the first 3 days of data
+# 3. Train the RL agent on the first 4 days of data
 python main_app.py --train-rl --train-days 0 1 2 3 --total-timesteps 25000
 
 # 4. Predict the optimal configuration for a late-night hour (e.g., 3 AM)
 python main_app.py --infer --tick 3
 
 # 5. Visualize the impact of the optimization on the test data for that hour
-python main_app.py --visualize --test-day 3 --tick 3
+python main_app.py --visualize --test-day 4 --tick 3
 ```
 
 ---
