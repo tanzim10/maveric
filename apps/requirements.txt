@@ -3,3 +3,12 @@ pandas==1.5.3
 pyarrow==13.0.0
 python-dotenv==0.21.1
 stable-baselines3==2.7.0
+# cco
+scipy==1.15.3
+scikit-image==0.25.2
+fastkml==1.4.0   # newer python version of fastkml requires API call code to change in cco notebook
+lxml==6.0.2
+plotly==6.5.0
+rasterio==1.4.3
+shapely==2.1.2
+gpytorch==1.14.3
