@@ -100,3 +100,4 @@ radp/digital_twin/agentic_mobility/examples/generated_ues
 
 # pre-commit hook
 .flake8
+venv/

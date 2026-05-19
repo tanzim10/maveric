@@ -1,0 +1,43 @@
+{
+  "retry_count": 0,
+  "query_intent": {
+    "scenario_type": "urban",
+    "location": "Toshima, Tokyo, Japan",
+    "num_ues": 30,
+    "num_ticks": 50,
+    "ue_distribution": {
+      "stationary": 0.1,
+      "pedestrian": 0.35,
+      "cyclist": 0.2,
+      "car": 0.35,
+      "source": "predicted"
+    },
+    "raw_query": "Give me UE dataset for Toshima, Tokyo, Japan. consider it as a urban area with lots of pedestrians and cars. There are so many motorbikes, consider them as cyclists. Have thirty total devices. Deploy 5 cell towers."
+  },
+  "location_data": {
+    "center": [
+      35.725913,
+      139.7166365
+    ],
+    "min_lat": 35.680867954954955,
+    "max_lat": 35.77095804504504,
+    "min_lon": 139.66114997432595,
+    "max_lon": 139.77212302567403,
+    "area_type": "suburban"
+  },
+  "validation_warnings": null,
+  "spatial_bounds": {
+    "requested": {
+      "min_lat": 35.680867954954955,
+      "max_lat": 35.77095804504504,
+      "min_lon": 139.66114997432595,
+      "max_lon": 139.77212302567403
+    },
+    "actual": {
+      "min_lat": 35.680872194542424,
+      "max_lat": 35.76744845138955,
+      "min_lon": 139.66123178255808,
+      "max_lon": 139.7684066023479
+    }
+  }
+}

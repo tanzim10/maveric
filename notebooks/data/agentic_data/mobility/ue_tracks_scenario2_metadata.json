@@ -1,0 +1,43 @@
+{
+  "retry_count": 0,
+  "query_intent": {
+    "scenario_type": "suburban",
+    "location": "Austin, Texas",
+    "num_ues": 50,
+    "num_ticks": 50,
+    "ue_distribution": {
+      "stationary": 0.1,
+      "pedestrian": 0.2,
+      "cyclist": 0.12,
+      "car": 0.58,
+      "source": "predicted"
+    },
+    "raw_query": "Generate 50 UEs in suburban Austin, Texas with lots of cars"
+  },
+  "location_data": {
+    "center": [
+      30.2711286,
+      -97.7436995
+    ],
+    "min_lat": 30.226083554954954,
+    "max_lat": 30.316173645045048,
+    "min_lon": -97.79585611680412,
+    "max_lon": -97.6915428831959,
+    "area_type": "suburban"
+  },
+  "validation_warnings": null,
+  "spatial_bounds": {
+    "requested": {
+      "min_lat": 30.226083554954954,
+      "max_lat": 30.316173645045048,
+      "min_lon": -97.79585611680412,
+      "max_lon": -97.6915428831959
+    },
+    "actual": {
+      "min_lat": 30.226173028016976,
+      "max_lat": 30.31615401230418,
+      "min_lon": -97.7957759078818,
+      "max_lon": -97.69154290324747
+    }
+  }
+}

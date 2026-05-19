@@ -1,0 +1,43 @@
+{
+  "retry_count": 0,
+  "query_intent": {
+    "scenario_type": "urban",
+    "location": "San Francisco",
+    "num_ues": 50,
+    "num_ticks": 50,
+    "ue_distribution": {
+      "stationary": 0.2,
+      "pedestrian": 0.35,
+      "cyclist": 0.1,
+      "car": 0.35,
+      "source": "predicted"
+    },
+    "raw_query": "Generate 50 UEs in urban downtown San Francisco with mix of pedestrians and cars"
+  },
+  "location_data": {
+    "center": [
+      37.7879363,
+      -122.4075201
+    ],
+    "min_lat": 37.742891254954955,
+    "max_lat": 37.83298134504504,
+    "min_lon": -122.46451865062372,
+    "max_lon": -122.35052154937628,
+    "area_type": "suburban"
+  },
+  "validation_warnings": null,
+  "spatial_bounds": {
+    "requested": {
+      "min_lat": 37.742891254954955,
+      "max_lat": 37.83298134504504,
+      "min_lon": -122.46451865062372,
+      "max_lon": -122.35052154937628
+    },
+    "actual": {
+      "min_lat": 37.74296210557506,
+      "max_lat": 37.83292482485086,
+      "min_lon": -122.46402272151053,
+      "max_lon": -122.35350231488593
+    }
+  }
+}
